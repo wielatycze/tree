@@ -219,6 +219,22 @@ function addPath(svg, x1, y1, x2, y2, stroke) {
   svg.appendChild(p);
 }
 
+function addStraightPath(svg, x1, y1, x2, y2, stroke) {
+  const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+  const midY = y1 + 18;
+  let d;
+  if (x1 === x2) {
+    d = 'M'+x1+','+y1+' L'+x2+','+y2;
+  } else {
+    d = 'M'+x1+','+y1+' L'+x1+','+midY+' L'+x2+','+midY+' L'+x2+','+y2;
+  }
+  p.setAttribute('d', d);
+  p.setAttribute('stroke', stroke||'#ccc');
+  p.setAttribute('stroke-width','1.5');
+  p.setAttribute('fill','none');
+  svg.appendChild(p);
+}
+
 function addHLine(svg, x1, x2, y) {
   const l = document.createElementNS('http://www.w3.org/2000/svg','line');
   l.setAttribute('x1',x1); l.setAttribute('y1',y);
@@ -237,15 +253,12 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   // ── Measure total width needed ──────────────────────────────
-  // Each family occupies either a spouse row or a children row.
   const FAM_GAP = 40;  // gap between family blocks
-  const COUPLE_GAP = GX * 2;
-  const spouseOffset = NW + COUPLE_GAP;
-  const spouseCount = tree.families.filter(fam => fam.spouse).length;
-  const spouseRowW = spouseCount ? spouseCount * NW + (spouseCount - 1) * COUPLE_GAP : 0;
-  const childGroupWidths = tree.families.map(fam => fam.children.length ? fam.children.length * (NW+GX) - GX : NW);
-  const totalChildW = childGroupWidths.reduce((a,b)=>a+b, 0) + FAM_GAP * (tree.families.length - 1);
-  const totalFamW = Math.max(spouseRowW, totalChildW);
+  const famWidths = tree.families.map(fam => {
+    const chW = fam.children.length ? fam.children.length * (NW+GX) - GX : NW;
+    return Math.max(fam.spouse ? NW : 0, chW);
+  });
+  const totalFamW = famWidths.reduce((a,b)=>a+b, 0) + FAM_GAP * (tree.families.length - 1);
 
   const LW = 90;
   // Ancestor block needs 4 grandparent slots
@@ -295,31 +308,33 @@ function renderTree(tree) {
   const rootX = (patX+matX)/2;
   add(tree.root, rootX, Y2, true);
 
-  // ── Spouses and children ────────────────────────────────────
-  let spouseIndex = 0;
-  tree.families.forEach((fam) => {
+  // ── Families side by side ────────────────────────────────────
+  const famStartX = rootX - totalFamW / 2;
+
+  let famX = famStartX;
+  tree.families.forEach((fam, fi) => {
+    const fw = famWidths[fi];
     let spouseX = null;
+
     if (fam.spouse) {
-      const pos = spouseIndex++;
-      const step = Math.ceil((pos + 1) / 2);
-      spouseX = rootX + (pos % 2 === 0 ? step * spouseOffset : -step * spouseOffset);
+      spouseX = famX + (fw - NW) / 2;
       add(fam.spouse, spouseX, Y2);
-      addHLine(svg, cx(rootX), cx(spouseX), Y2+NH/2);
+      addHLine(svg, cx(rootX), cx(spouseX), Y2 + NH/2);
     }
 
     if (fam.children.length) {
-      const chTotalW = fam.children.length*(NW+GX) - GX;
-      const chStart = spouseX !== null
-        ? spouseX - Math.max(0, (chTotalW - NW) / 2)
-        : rootX - Math.max(0, (chTotalW - NW) / 2);
+      const chTotalW = fam.children.length * (NW+GX) - GX;
+      const chStart = famX + (fw - chTotalW) / 2;
       const srcX = fam.spouse ? cx(spouseX) : cx(rootX);
 
       fam.children.forEach((ch, ci) => {
-        const chx = chStart + ci*(NW+GX);
+        const chx = chStart + ci * (NW+GX);
         add(ch, chx, Y3);
-        addPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
+        addStraightPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
       });
     }
+
+    famX += fw + FAM_GAP;
   });
 
   // ── Ancestor connectors ──────────────────────────────────────
