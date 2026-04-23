@@ -5,7 +5,7 @@ Run: python3 export.py
 """
 import sqlite3, json, os, sys
 
-DB_PATH = os.environ.get('DB_PATH', 'data/Велятичи_SQLite3.txt')
+DB_PATH = os.environ.get('DB_PATH', 'data/tree.sqlite3')
 OUT_DIR  = os.environ.get('OUT_DIR',  'data')
 
 os.makedirs(OUT_DIR, exist_ok=True)
