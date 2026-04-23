@@ -305,7 +305,11 @@ function renderTree(tree) {
     const fw = famWidths[fi];
     const coupleW = fam.spouse ? NW*2 + COUPLE_GAP : NW;
     const coupleX = famX + (fw - coupleW)/2;
-    const spouseX = fam.spouse ? coupleX + NW + COUPLE_GAP : null;
+    const spouseX = fam.spouse
+      ? tree.families.length === 1
+        ? rootX + NW + GX
+        : coupleX + NW + COUPLE_GAP
+      : null;
 
     if (fam.spouse) {
       add(fam.spouse, spouseX, Y2);
