@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Велятичи — Family Tree</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,sans-serif}
+body{background:#f5f4f0;color:#1a1a1a;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid #e0ddd8;flex-wrap:wrap;flex-shrink:0}
+#toolbar h1{font-size:14px;font-weight:600;color:#444;white-space:nowrap}
+#sw{position:relative;flex:1;min-width:180px;max-width:320px}
+#si{width:100%;padding:6px 10px;border:1px solid #d0cdc8;border-radius:8px;font-size:13px;background:#fafaf8;color:#1a1a1a}
+#si:focus{outline:none;border-color:#888;background:#fff}
+#sr{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d0cdc8;border-radius:8px;z-index:200;max-height:260px;overflow-y:auto;margin-top:2px;box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.sri{padding:8px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #f0ede8}
+.sri:last-child{border-bottom:none}
+.sri:hover{background:#f5f4f0}
+.sri-name{font-weight:500}
+.sri-sub{font-size:11px;color:#888;margin-top:1px}
+#crumb{font-size:12px;color:#888;flex:1}
+.tbtn{padding:5px 12px;border:1px solid #d0cdc8;border-radius:7px;font-size:12px;cursor:pointer;background:#fff;color:#333}
+.tbtn:hover{background:#f5f4f0}
+#loading{position:fixed;inset:0;background:#f5f4f0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:999}
+#loading p{font-size:14px;color:#888}
+#loading-bar{width:240px;height:4px;background:#e0ddd8;border-radius:2px;overflow:hidden}
+#loading-fill{height:100%;background:#5b8fcc;border-radius:2px;transition:width .3s}
+#canvas-wrap{flex:1;overflow:auto;position:relative;background:#f5f4f0}
+#canvas{position:relative;user-select:none}
+svg.conn{position:absolute;top:0;left:0;pointer-events:none;overflow:visible}
+.node{position:absolute;width:152px;background:#fff;border:1px solid #d0cdc8;border-radius:10px;padding:8px 10px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.node:hover{border-color:#888;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.node.root{border:2px solid #4a7fc1;background:#f0f5ff}
+.node.sel{border:2px solid #2a9d6a;background:#f0fff8}
+.nm{font-size:12px;font-weight:600;line-height:1.3;color:#111}
+.dt{font-size:11px;color:#777;margin-top:2px}
+.pl{font-size:11px;color:#999;font-style:italic;margin-top:1px}
+.nu{display:inline-block;font-size:10px;background:#e8f0fb;color:#3366aa;border-radius:4px;padding:1px 6px;margin-top:3px;font-weight:600}
+.sex-m{border-left:3px solid #5b8fcc}
+.sex-f{border-left:3px solid #cc6b8e}
+.gen-lbl{position:absolute;font-size:10px;color:#bbb;left:6px;letter-spacing:.3px;text-transform:uppercase}
+#panel{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e0ddd8;padding:12px 16px;display:none;gap:12px;align-items:flex-start;z-index:100;flex-wrap:wrap}
+#pname{font-size:16px;font-weight:600;color:#111}
+#pinfo{font-size:13px;color:#666;margin-top:3px}
+#pnav{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.nbtn{padding:5px 12px;border:1px solid #d0cdc8;border-radius:7px;font-size:12px;cursor:pointer;background:#f5f4f0;color:#333}
+.nbtn:hover{background:#eeedea}
+#pclose{margin-left:auto;font-size:22px;cursor:pointer;color:#aaa;line-height:1;padding:0 4px;align-self:flex-start}
+#pclose:hover{color:#333}
+#err{position:fixed;inset:0;background:#f5f4f0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:999;text-align:center;padding:24px}
+#err h2{color:#c0392b;font-size:18px}
+#err p{color:#666;font-size:14px;max-width:480px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div id="loading-bar"><div id="loading-fill" style="width:0%"></div></div>
+  <p id="loading-msg">Loading family tree data...</p>
+</div>
+
+<div id="err">
+  <h2>Could not load data</h2>
+  <p id="err-msg"></p>
+</div>
+
+<div id="toolbar">
+  <h1>Велятичи</h1>
+  <div id="sw">
+    <input id="si" placeholder="Search name..." autocomplete="off">
+    <div id="sr" style="display:none"></div>
+  </div>
+  <button class="tbtn" id="bhome">Home</button>
+  <span id="crumb"></span>
+</div>
+
+<div id="canvas-wrap">
+  <div id="canvas"></div>
+</div>
+
+<div id="panel">
+  <div style="flex:1">
+    <div id="pname"></div>
+    <div id="pinfo"></div>
+    <div id="pnav"></div>
+  </div>
+  <span id="pclose">×</span>
+</div>
+
+<script>
+const DATA_FILES = ['si','parents','children','marriages','places','nums','births','deaths'];
+const DATA_DIR   = 'data/';
+const HOME_ID    = 11083;   // ← change this to your preferred starting person id
+
+// ── Data store (populated after fetch) ───────────────────────
+let SI,PA,CH,MA,PL,NU,BI,DE;
+
+// ── Load all JSON files ───────────────────────────────────────
+(async function load() {
+  const fill = document.getElementById('loading-fill');
+  const msg  = document.getElementById('loading-msg');
+  try {
+    const total = DATA_FILES.length;
+    const results = {};
+    for (let i = 0; i < total; i++) {
+      const name = DATA_FILES[i];
+      msg.textContent = 'Loading ' + name + '...';
+      const resp = await fetch(DATA_DIR + name + '.json');
+      if (!resp.ok) throw new Error('Failed to fetch ' + name + '.json  (HTTP ' + resp.status + ')');
+      results[name] = await resp.json();
+      fill.style.width = Math.round((i + 1) / total * 100) + '%';
+    }
+    SI = results.si;
+    PA = results.parents;
+    CH = results.children;
+    MA = results.marriages;
+    PL = results.places;
+    NU = results.nums;
+    BI = results.births;
+    DE = results.deaths;
+    document.getElementById('loading').style.display = 'none';
+    renderTree(buildTree(HOME_ID));
+    initSearch();
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('err-msg').textContent = e.message + '\n\nMake sure the JSON files exist in the data/ folder. Run export.py to generate them.';
+    document.getElementById('err').style.display = 'flex';
+  }
+})();
+
+// ── Helpers ───────────────────────────────────────────────────
+const NW=152, NH=88, GX=20, GY=56, GH=NH+GY;
+
+function fmtd(d) {
+  if (!d) return '?';
+  const [y,m,dd] = d;
+  if (!y)  return '?';
+  if (!m)  return '' + y;
+  if (!dd) return m + '.' + y;
+  return dd + '.' + m + '.' + y;
+}
+
+function buildPerson(id) {
+  if (!id) return null;
+  const r = SI.find(x => x[0] == id);
+  return {
+    id,
+    sex:         r ? r[1] : 0,
+    given:       r ? r[2] : null,
+    patronymic:  r ? r[3] : null,
+    surname:     r ? r[4] : null,
+    maiden:      r ? r[5] : null,
+    birth:  BI[id] || null,
+    death:  DE[id] || null,
+    place:  PL[id] || null,
+    num:    NU[id] != null ? NU[id] : null
+  };
+}
+
+function buildTree(rootId) {
+  const root = buildPerson(rootId);
+  if (!root) return null;
+  const pars  = PA[rootId] || [null, null];
+  const [fid, mid] = pars;
+  const fpars = fid ? PA[fid] || [null,null] : [null,null];
+  const mpars = mid ? PA[mid] || [null,null] : [null,null];
+  const marrs = MA[rootId] || [];
+  const families = marrs.map(([sid, md]) => ({
+    spouse:   buildPerson(sid),
+    md,
+    children: (CH[rootId] || []).map(buildPerson).filter(Boolean)
+  }));
+  if (!families.length) {
+    const ch = (CH[rootId] || []).map(buildPerson).filter(Boolean);
+    if (ch.length) families.push({ spouse: null, md: null, children: ch });
+  }
+  return {
+    root,
+    father:  buildPerson(fid),  mother:  buildPerson(mid),
+    gf_pat:  buildPerson(fpars[0]), gm_pat: buildPerson(fpars[1]),
+    gf_mat:  buildPerson(mpars[0]), gm_mat: buildPerson(mpars[1]),
+    families
+  };
+}
+
+// ── Rendering ─────────────────────────────────────────────────
+let currentRootId = null;
+
+function makeNode(p, x, y, isRoot) {
+  if (!p) return null;
+  const div = document.createElement('div');
+  div.className = 'node' + (p.sex===1?' sex-m':p.sex===2?' sex-f':'') + (isRoot?' root':'');
+  div.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
+  div.dataset.id = p.id;
+  const name = [p.given, p.patronymic, p.surname||p.maiden].filter(Boolean).join(' ') || 'Person #'+p.id;
+  const dates = (p.birth||p.death) ? fmtd(p.birth) + ' — ' + fmtd(p.death) : '';
+  div.innerHTML =
+    '<div class="nm">' + name + '</div>' +
+    (dates  ? '<div class="dt">' + dates + '</div>' : '') +
+    (p.place? '<div class="pl">' + p.place + '</div>' : '') +
+    (p.num!=null ? '<span class="nu">#' + p.num + '</span>' : '');
+  div.addEventListener('click', () => showPanel(p, div));
+  return div;
+}
+
+function addPath(svg, x1, y1, x2, y2, stroke) {
+  const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+  const cy = (y1+y2)/2;
+  p.setAttribute('d', 'M'+x1+','+y1+' C'+x1+','+cy+' '+x2+','+cy+' '+x2+','+y2);
+  p.setAttribute('stroke', stroke||'#ccc');
+  p.setAttribute('stroke-width','1.5');
+  p.setAttribute('fill','none');
+  svg.appendChild(p);
+}
+
+function addHLine(svg, x1, x2, y) {
+  const l = document.createElementNS('http://www.w3.org/2000/svg','line');
+  l.setAttribute('x1',x1); l.setAttribute('y1',y);
+  l.setAttribute('x2',x2); l.setAttribute('y2',y);
+  l.setAttribute('stroke','#bbb'); l.setAttribute('stroke-width','1.5');
+  l.setAttribute('stroke-dasharray','5,4');
+  svg.appendChild(l);
+}
+
+function cx(x) { return x + NW/2; }
+function bot(y) { return y + NH; }
+
+function renderTree(tree) {
+  if (!tree) return;
+  const canvas = document.getElementById('canvas');
+  canvas.innerHTML = '';
+  const W = Math.max(940, 6*(NW+GX)+160);
+  const H = 5*GH + 60;
+  canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.classList.add('conn');
+  svg.style.cssText = 'width:'+W+'px;height:'+H+'px';
+  canvas.appendChild(svg);
+
+  const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
+  const LW=90;
+
+  ['Great-grandparents','Grandparents','Parents','Children','Grandchildren'].forEach((lbl,i) => {
+    const s = document.createElement('span');
+    s.className = 'gen-lbl';
+    s.style.top = (Y0 + i*GH + 2) + 'px';
+    s.textContent = lbl;
+    canvas.appendChild(s);
+  });
+
+  const avail = W - LW - 4*(NW+GX);
+  const gap3  = avail/3;
+  const gpx = [LW, LW+(NW+GX)+gap3, LW+2*(NW+GX)+2*gap3, LW+3*(NW+GX)+3*gap3];
+
+  function add(p, x, y, isRoot) {
+    const n = makeNode(p, x, y, isRoot||false);
+    if (n) canvas.appendChild(n);
+    return n;
+  }
+
+  add(tree.gf_pat, gpx[0], Y0);
+  add(tree.gm_pat, gpx[1], Y0);
+  add(tree.gf_mat, gpx[2], Y0);
+  add(tree.gm_mat, gpx[3], Y0);
+
+  const patX = (gpx[0]+gpx[1])/2;
+  const matX = (gpx[2]+gpx[3])/2;
+  add(tree.father, patX, Y1);
+  add(tree.mother, matX, Y1);
+
+  const rootX = (patX+matX)/2;
+  add(tree.root, rootX, Y2, true);
+
+  tree.families.forEach((fam, fi) => {
+    if (fam.spouse) {
+      const sx = rootX + (NW+GX*3)*(fi+1);
+      add(fam.spouse, sx, Y2);
+      addHLine(svg, cx(rootX), cx(sx), Y2 + NH/2);
+    }
+  });
+
+  const allChildren = tree.families.flatMap(f => f.children);
+  const totalCW = allChildren.length*(NW+GX) - GX;
+  const chStart = Math.max(LW, cx(rootX) - totalCW/2 - NW/2);
+  allChildren.forEach((ch, i) => {
+    const chx = chStart + i*(NW+GX);
+    add(ch, chx, Y3);
+    addPath(svg, cx(rootX), bot(Y2), cx(chx), Y3, '#7bc8a8');
+  });
+
+  if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(patX), Y1, '#90b8e8');
+  if (tree.gm_pat && tree.father) addPath(svg, cx(gpx[1]), bot(Y0), cx(patX), Y1, '#e898b8');
+  if (tree.gf_mat && tree.mother) addPath(svg, cx(gpx[2]), bot(Y0), cx(matX), Y1, '#90b8e8');
+  if (tree.gm_mat && tree.mother) addPath(svg, cx(gpx[3]), bot(Y0), cx(matX), Y1, '#e898b8');
+  if (tree.father) addPath(svg, cx(patX), bot(Y1), cx(rootX), Y2, '#7ca8d8');
+  if (tree.mother) addPath(svg, cx(matX), bot(Y1), cx(rootX), Y2, '#d87898');
+
+  currentRootId = tree.root.id;
+  document.getElementById('crumb').textContent =
+    [tree.root.given, tree.root.patronymic, tree.root.surname||tree.root.maiden].filter(Boolean).join(' ');
+
+  // Update URL hash for bookmarking
+  history.replaceState(null, '', '#' + tree.root.id);
+
+  setTimeout(() => {
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.scrollLeft = rootX - wrap.clientWidth/2 + NW/2;
+    wrap.scrollTop  = Y2 - 120;
+  }, 50);
+}
+
+// ── Detail panel ─────────────────────────────────────────────
+function showPanel(p, node) {
+  document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel'));
+  if (node) node.classList.add('sel');
+  const name = [p.given, p.patronymic, p.surname||p.maiden].filter(Boolean).join(' ') || 'Person #'+p.id;
+  document.getElementById('pname').textContent = name;
+  const parts = [];
+  if (p.birth) parts.push('Born: ' + fmtd(p.birth));
+  if (p.death) parts.push('Died: ' + fmtd(p.death));
+  if (p.place) parts.push(p.place);
+  if (p.num != null) parts.push('#' + p.num);
+  document.getElementById('pinfo').textContent = parts.join('  ·  ');
+  const nav = document.getElementById('pnav');
+  nav.innerHTML = '';
+  if (p.id !== currentRootId) {
+    const btn = document.createElement('button');
+    btn.className = 'nbtn';
+    btn.textContent = 'View tree →';
+    btn.onclick = () => navigate(p.id);
+    nav.appendChild(btn);
+  }
+  document.getElementById('panel').style.display = 'flex';
+}
+
+function navigate(id) {
+  document.getElementById('panel').style.display = 'none';
+  renderTree(buildTree(id));
+}
+
+document.getElementById('bhome').onclick  = () => navigate(HOME_ID);
+document.getElementById('pclose').onclick = () => {
+  document.getElementById('panel').style.display = 'none';
+  document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel'));
+};
+
+// Support deep-linking via URL hash: yoursite.github.io/veliatychi/#11083
+window.addEventListener('hashchange', () => {
+  const id = parseInt(location.hash.slice(1));
+  if (id && id !== currentRootId) navigate(id);
+});
+
+// ── Search ────────────────────────────────────────────────────
+function initSearch() {
+  const sinput = document.getElementById('si');
+  const sres   = document.getElementById('sr');
+  let debounce = null;
+  sinput.addEventListener('input', () => {
+    clearTimeout(debounce);
+    const q = sinput.value.trim().toLowerCase();
+    if (q.length < 2) { sres.style.display = 'none'; return; }
+    debounce = setTimeout(() => {
+      const matches = [];
+      for (const r of SI) {
+        if ([r[2],r[3],r[4],r[5]].join(' ').toLowerCase().includes(q)) {
+          matches.push(r);
+          if (matches.length >= 10) break;
+        }
+      }
+      sres.innerHTML = '';
+      if (!matches.length) { sres.style.display = 'none'; return; }
+      matches.forEach(r => {
+        const name = [r[2],r[3],r[4]||r[5]].filter(Boolean).join(' ');
+        const div  = document.createElement('div');
+        div.className = 'sri';
+        div.innerHTML =
+          '<div class="sri-name">' + name + '</div>' +
+          '<div class="sri-sub">' + (r[4]||'') + (r[6]?' b.'+r[6]:'') + ' ' + (r[1]===1?'♂':'♀') + '</div>';
+        div.onclick = () => { sres.style.display='none'; sinput.value=''; navigate(r[0]); };
+        sres.appendChild(div);
+      });
+      sres.style.display = 'block';
+    }, 250);
+  });
+  document.addEventListener('click', e => {
+    if (!sinput.contains(e.target) && !sres.contains(e.target)) sres.style.display = 'none';
+  });
+}
+</script>
+</body>
+</html>
