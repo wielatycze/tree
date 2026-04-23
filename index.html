@@ -131,13 +131,14 @@ let SI,PA,CH,MA,PL,NU,BI,DE;
 // ── Helpers ───────────────────────────────────────────────────
 const NW=152, NH=88, GX=20, GY=56, GH=NH+GY;
 
+function pad(n) { return n ? String(n).padStart(2,'0') : '??'; }
 function fmtd(d) {
   if (!d) return '?';
   const [y,m,dd] = d;
   if (!y)  return '?';
   if (!m)  return '' + y;
-  if (!dd) return m + '.' + y;
-  return dd + '.' + m + '.' + y;
+  if (!dd) return '??.'+pad(m)+'.'+y;
+  return pad(dd)+'.'+pad(m)+'.'+y;
 }
 
 function buildPerson(id) {
@@ -192,7 +193,7 @@ function makeNode(p, x, y, isRoot) {
   div.className = 'node' + (p.sex===1?' sex-m':p.sex===2?' sex-f':'') + (isRoot?' root':'');
   div.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
   div.dataset.id = p.id;
-  const name = [p.given, p.patronymic, p.surname||p.maiden].filter(Boolean).join(' ') || 'Person #'+p.id;
+  const name = [p.surname||p.maiden, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
   const dates = (p.birth||p.death) ? fmtd(p.birth) + ' — ' + fmtd(p.death) : '';
   div.innerHTML =
     '<div class="nm">' + name + '</div>' +
@@ -279,13 +280,25 @@ function renderTree(tree) {
     }
   });
 
+  // Children — connect from midpoint between root and their other parent
   const allChildren = tree.families.flatMap(f => f.children);
   const totalCW = allChildren.length*(NW+GX) - GX;
   const chStart = Math.max(LW, cx(rootX) - totalCW/2 - NW/2);
+
+  // Build a map of child->spouse for connector source
+  const childSpouseX = {};
+  tree.families.forEach((fam, fi) => {
+    const spX = fam.spouse ? rootX + (NW+GX*3)*(fi+1) : null;
+    fam.children.forEach(ch => { childSpouseX[ch.id] = spX; });
+  });
+
   allChildren.forEach((ch, i) => {
     const chx = chStart + i*(NW+GX);
     add(ch, chx, Y3);
-    addPath(svg, cx(rootX), bot(Y2), cx(chx), Y3, '#7bc8a8');
+    const spX = childSpouseX[ch.id];
+    // source = midpoint of root+spouse if spouse known, else root
+    const srcX = spX != null ? (cx(rootX) + cx(spX)) / 2 : cx(rootX);
+    addPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
   });
 
   if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(patX), Y1, '#90b8e8');
@@ -297,7 +310,7 @@ function renderTree(tree) {
 
   currentRootId = tree.root.id;
   document.getElementById('crumb').textContent =
-    [tree.root.given, tree.root.patronymic, tree.root.surname||tree.root.maiden].filter(Boolean).join(' ');
+    [tree.root.surname||tree.root.maiden, tree.root.given, tree.root.patronymic].filter(Boolean).join(' ');
 
   // Update URL hash for bookmarking
   history.replaceState(null, '', '#' + tree.root.id);
@@ -313,7 +326,7 @@ function renderTree(tree) {
 function showPanel(p, node) {
   document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel'));
   if (node) node.classList.add('sel');
-  const name = [p.given, p.patronymic, p.surname||p.maiden].filter(Boolean).join(' ') || 'Person #'+p.id;
+  const name = [p.surname||p.maiden, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
   document.getElementById('pname').textContent = name;
   const parts = [];
   if (p.birth) parts.push('Born: ' + fmtd(p.birth));
@@ -370,7 +383,7 @@ function initSearch() {
       sres.innerHTML = '';
       if (!matches.length) { sres.style.display = 'none'; return; }
       matches.forEach(r => {
-        const name = [r[2],r[3],r[4]||r[5]].filter(Boolean).join(' ');
+        const name = [r[4]||r[5], r[2], r[3]].filter(Boolean).join(' ');
         const div  = document.createElement('div');
         div.className = 'sri';
         div.innerHTML =
