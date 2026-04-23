@@ -165,16 +165,21 @@ function buildTree(rootId) {
   const [fid, mid] = pars;
   const fpars = fid ? PA[fid] || [null,null] : [null,null];
   const mpars = mid ? PA[mid] || [null,null] : [null,null];
+
+  // MA[rootId] = [[spouse_id, [y,m,d], [child_ids]], ...]
   const marrs = MA[rootId] || [];
-  const families = marrs.map(([sid, md]) => ({
+  const families = marrs.map(([sid, md, childIds]) => ({
     spouse:   buildPerson(sid),
     md,
-    children: (CH[rootId] || []).map(buildPerson).filter(Boolean)
+    children: (childIds || []).map(buildPerson).filter(Boolean)
   }));
+
+  // If no marriage records but children exist via CH map, add as unknown-spouse family
   if (!families.length) {
     const ch = (CH[rootId] || []).map(buildPerson).filter(Boolean);
     if (ch.length) families.push({ spouse: null, md: null, children: ch });
   }
+
   return {
     root,
     father:  buildPerson(fid),  mother:  buildPerson(mid),
@@ -230,8 +235,26 @@ function renderTree(tree) {
   if (!tree) return;
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
-  const W = Math.max(940, 6*(NW+GX)+160);
-  const H = 5*GH + 60;
+
+  // ── Measure total width needed ──────────────────────────────
+  // Each family occupies: max(2 nodes side by side, children spread)
+  // We lay out families left-to-right starting after the ancestors block
+  const FAM_GAP = 40;  // gap between families
+  const COUPLE_W = NW*2 + GX*3; // root + spouse side by side
+
+  const famWidths = tree.families.map(fam => {
+    const chW = fam.children.length * (NW+GX) - GX;
+    return Math.max(COUPLE_W, chW);
+  });
+  const totalFamW = famWidths.reduce((a,b)=>a+b, 0) + FAM_GAP*(tree.families.length-1);
+
+  const LW = 90;
+  // Ancestor block needs 4 grandparent slots
+  const GP_SLOT = NW + GX;
+  const ancestorW = LW + 4*GP_SLOT + 40;
+  const W = Math.max(ancestorW + 20, LW + totalFamW + 80);
+  const H = 5*GH + 80;
+
   canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative';
   const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.classList.add('conn');
@@ -239,7 +262,6 @@ function renderTree(tree) {
   canvas.appendChild(svg);
 
   const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
-  const LW=90;
 
   ['Great-grandparents','Grandparents','Parents','Children','Grandchildren'].forEach((lbl,i) => {
     const s = document.createElement('span');
@@ -249,15 +271,16 @@ function renderTree(tree) {
     canvas.appendChild(s);
   });
 
-  const avail = W - LW - 4*(NW+GX);
-  const gap3  = avail/3;
-  const gpx = [LW, LW+(NW+GX)+gap3, LW+2*(NW+GX)+2*gap3, LW+3*(NW+GX)+3*gap3];
-
   function add(p, x, y, isRoot) {
     const n = makeNode(p, x, y, isRoot||false);
     if (n) canvas.appendChild(n);
     return n;
   }
+
+  // ── Ancestors (grandparents + parents) ──────────────────────
+  const avail = W - LW - 4*(NW+GX);
+  const gap3  = avail/3;
+  const gpx = [LW, LW+(NW+GX)+gap3, LW+2*(NW+GX)+2*gap3, LW+3*(NW+GX)+3*gap3];
 
   add(tree.gf_pat, gpx[0], Y0);
   add(tree.gm_pat, gpx[1], Y0);
@@ -269,38 +292,52 @@ function renderTree(tree) {
   add(tree.father, patX, Y1);
   add(tree.mother, matX, Y1);
 
+  // ── Root position: centre of ancestor block ──────────────────
   const rootX = (patX+matX)/2;
   add(tree.root, rootX, Y2, true);
 
+  // ── Families side by side ────────────────────────────────────
+  // Start families centred around rootX if possible
+  const famStartX = Math.max(LW, rootX - totalFamW/2);
+
+  let famX = famStartX;
   tree.families.forEach((fam, fi) => {
-    if (fam.spouse) {
-      const sx = rootX + (NW+GX*3)*(fi+1);
-      add(fam.spouse, sx, Y2);
-      addHLine(svg, cx(rootX), cx(sx), Y2 + NH/2);
+    const fw = famWidths[fi];
+    const coupleCenter = famX + fw/2;
+
+    // Position root within this family slot (if only 1 family, it stays at rootX)
+    const thisRootX = tree.families.length === 1 ? rootX : coupleCenter - (NW+GX*1.5)/2;
+    const spouseX   = thisRootX + NW + GX*3;
+
+    // Only re-draw root node for multi-family (first family keeps original)
+    if (fi > 0) {
+      // Draw a secondary root indicator linking from original root
+      addHLine(svg, cx(rootX)+NW/2, cx(thisRootX), Y2+NH/2);
     }
+
+    // Spouse
+    if (fam.spouse) {
+      add(fam.spouse, spouseX, Y2);
+      addHLine(svg, cx(thisRootX), cx(spouseX), Y2+NH/2);
+    }
+
+    // Children fanned below couple
+    if (fam.children.length) {
+      const chTotalW = fam.children.length*(NW+GX) - GX;
+      const chStart  = famX + (fw - chTotalW)/2;
+      const srcX = fam.spouse ? (cx(thisRootX)+cx(spouseX))/2 : cx(thisRootX);
+
+      fam.children.forEach((ch, ci) => {
+        const chx = chStart + ci*(NW+GX);
+        add(ch, chx, Y3);
+        addPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
+      });
+    }
+
+    famX += fw + FAM_GAP;
   });
 
-  // Children — connect from midpoint between root and their other parent
-  const allChildren = tree.families.flatMap(f => f.children);
-  const totalCW = allChildren.length*(NW+GX) - GX;
-  const chStart = Math.max(LW, cx(rootX) - totalCW/2 - NW/2);
-
-  // Build a map of child->spouse for connector source
-  const childSpouseX = {};
-  tree.families.forEach((fam, fi) => {
-    const spX = fam.spouse ? rootX + (NW+GX*3)*(fi+1) : null;
-    fam.children.forEach(ch => { childSpouseX[ch.id] = spX; });
-  });
-
-  allChildren.forEach((ch, i) => {
-    const chx = chStart + i*(NW+GX);
-    add(ch, chx, Y3);
-    const spX = childSpouseX[ch.id];
-    // source = midpoint of root+spouse if spouse known, else root
-    const srcX = spX != null ? (cx(rootX) + cx(spX)) / 2 : cx(rootX);
-    addPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
-  });
-
+  // ── Ancestor connectors ──────────────────────────────────────
   if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(patX), Y1, '#90b8e8');
   if (tree.gm_pat && tree.father) addPath(svg, cx(gpx[1]), bot(Y0), cx(patX), Y1, '#e898b8');
   if (tree.gf_mat && tree.mother) addPath(svg, cx(gpx[2]), bot(Y0), cx(matX), Y1, '#90b8e8');
@@ -311,8 +348,6 @@ function renderTree(tree) {
   currentRootId = tree.root.id;
   document.getElementById('crumb').textContent =
     [tree.root.surname||tree.root.maiden, tree.root.given, tree.root.patronymic].filter(Boolean).join(' ');
-
-  // Update URL hash for bookmarking
   history.replaceState(null, '', '#' + tree.root.id);
 
   setTimeout(() => {
