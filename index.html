@@ -351,12 +351,12 @@ function renderTree(tree) {
   }
 
   // ── Ancestor connectors ──────────────────────────────────────
-  if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(patX), Y1, '#90b8e8');
-  if (tree.gm_pat && tree.father) addPath(svg, cx(gpx[1]), bot(Y0), cx(patX), Y1, '#e898b8');
-  if (tree.gf_mat && tree.mother) addPath(svg, cx(gpx[2]), bot(Y0), cx(matX), Y1, '#90b8e8');
-  if (tree.gm_mat && tree.mother) addPath(svg, cx(gpx[3]), bot(Y0), cx(matX), Y1, '#e898b8');
-  if (tree.father) addPath(svg, cx(patX), bot(Y1), cx(rootX), Y2, '#7ca8d8');
-  if (tree.mother) addPath(svg, cx(matX), bot(Y1), cx(rootX), Y2, '#d87898');
+  if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(fatherX), Y1, '#90b8e8');
+  if (tree.gm_pat && tree.father) addPath(svg, cx(gpx[1]), bot(Y0), cx(fatherX), Y1, '#e898b8');
+  if (tree.gf_mat && tree.mother) addPath(svg, cx(gpx[2]), bot(Y0), cx(), Y1, '#90b8e8');
+  if (tree.gm_mat && tree.mother) addPath(svg, cx(gpx[3]), bot(Y0), cx(motherX), Y1, '#e898b8');
+  if (tree.father) addPath(svg, cx(fatherX), bot(Y1), cx(rootX), Y2, '#7ca8d8');
+  if (tree.mother) addPath(svg, cx(motherX), bot(Y1), cx(rootX), Y2, '#d87898');
 
   currentRootId = tree.root.id;
   document.getElementById('crumb').textContent =
