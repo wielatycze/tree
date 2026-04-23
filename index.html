@@ -312,6 +312,7 @@ function renderTree(tree) {
   const famStartX = rootX - totalFamW / 2;
 
   let famX = famStartX;
+  const spouseCenters = [];
   tree.families.forEach((fam, fi) => {
     const fw = famWidths[fi];
     let spouseX = null;
@@ -319,7 +320,7 @@ function renderTree(tree) {
     if (fam.spouse) {
       spouseX = famX + (fw - NW) / 2;
       add(fam.spouse, spouseX, Y2);
-      addHLine(svg, cx(rootX), cx(spouseX), Y2 + NH/2);
+      spouseCenters.push(cx(spouseX));
     }
 
     if (fam.children.length) {
@@ -336,6 +337,15 @@ function renderTree(tree) {
 
     famX += fw + FAM_GAP;
   });
+
+  if (spouseCenters.length) {
+    const junctionY = bot(Y2) + 14;
+    const left = Math.min(...spouseCenters);
+    const right = Math.max(...spouseCenters);
+    addHLine(svg, left, right, junctionY);
+    addStraightPath(svg, cx(rootX), bot(Y2), cx(rootX), junctionY, '#999');
+    spouseCenters.forEach(x => addStraightPath(svg, x, bot(Y2), x, junctionY, '#999'));
+  }
 
   // ── Ancestor connectors ──────────────────────────────────────
   if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), cx(patX), Y1, '#90b8e8');
