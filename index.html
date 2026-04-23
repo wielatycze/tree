@@ -237,16 +237,15 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   // ── Measure total width needed ──────────────────────────────
-  // Each family occupies: max(2 nodes side by side, children spread)
-  // We lay out families left-to-right starting after the ancestors block
-  const FAM_GAP = 40;  // gap between families
+  // Each family occupies either a spouse row or a children row.
+  const FAM_GAP = 40;  // gap between family blocks
   const COUPLE_GAP = GX * 2;
-  const famWidths = tree.families.map(fam => {
-    const coupleW = fam.spouse ? NW*2 + COUPLE_GAP : NW;
-    const chW = fam.children.length ? fam.children.length * (NW+GX) - GX : 0;
-    return Math.max(coupleW, chW);
-  });
-  const totalFamW = famWidths.reduce((a,b)=>a+b, 0) + FAM_GAP*(tree.families.length-1);
+  const spouseOffset = NW + COUPLE_GAP;
+  const spouseCount = tree.families.filter(fam => fam.spouse).length;
+  const spouseRowW = spouseCount ? spouseCount * NW + (spouseCount - 1) * COUPLE_GAP : 0;
+  const childGroupWidths = tree.families.map(fam => fam.children.length ? fam.children.length * (NW+GX) - GX : NW);
+  const totalChildW = childGroupWidths.reduce((a,b)=>a+b, 0) + FAM_GAP * (tree.families.length - 1);
+  const totalFamW = Math.max(spouseRowW, totalChildW);
 
   const LW = 90;
   // Ancestor block needs 4 grandparent slots
@@ -296,30 +295,24 @@ function renderTree(tree) {
   const rootX = (patX+matX)/2;
   add(tree.root, rootX, Y2, true);
 
-  // ── Families side by side ────────────────────────────────────
-  // Start families centred around rootX if possible
-  const famStartX = Math.max(LW, rootX - totalFamW/2);
-
-  let famX = famStartX;
-  tree.families.forEach((fam, fi) => {
-    const fw = famWidths[fi];
-    const coupleW = fam.spouse ? NW*2 + COUPLE_GAP : NW;
-    const coupleX = famX + (fw - coupleW)/2;
-    const spouseX = fam.spouse
-      ? tree.families.length === 1
-        ? rootX + NW + GX
-        : coupleX + NW + COUPLE_GAP
-      : null;
-
+  // ── Spouses and children ────────────────────────────────────
+  let spouseIndex = 0;
+  tree.families.forEach((fam) => {
+    let spouseX = null;
     if (fam.spouse) {
+      const pos = spouseIndex++;
+      const step = Math.ceil((pos + 1) / 2);
+      spouseX = rootX + (pos % 2 === 0 ? step * spouseOffset : -step * spouseOffset);
       add(fam.spouse, spouseX, Y2);
       addHLine(svg, cx(rootX), cx(spouseX), Y2+NH/2);
     }
 
     if (fam.children.length) {
       const chTotalW = fam.children.length*(NW+GX) - GX;
-      const chStart  = famX + (fw - chTotalW)/2;
-      const srcX = fam.spouse ? (cx(rootX) + cx(spouseX))/2 : cx(rootX);
+      const chStart = spouseX !== null
+        ? spouseX - Math.max(0, (chTotalW - NW) / 2)
+        : rootX - Math.max(0, (chTotalW - NW) / 2);
+      const srcX = fam.spouse ? cx(spouseX) : cx(rootX);
 
       fam.children.forEach((ch, ci) => {
         const chx = chStart + ci*(NW+GX);
@@ -327,8 +320,6 @@ function renderTree(tree) {
         addPath(svg, srcX, bot(Y2), cx(chx), Y3, '#7bc8a8');
       });
     }
-
-    famX += fw + FAM_GAP;
   });
 
   // ── Ancestor connectors ──────────────────────────────────────
