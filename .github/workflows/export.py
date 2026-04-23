@@ -74,25 +74,52 @@ for ch_id, (fa_id, mo_id) in parents.items():
 save('children', children)
 
 # ── Marriages map ─────────────────────────────────────────────
-# {person_id: [[spouse_id, [y,m,d]], ...]}
+# {person_id: [[spouse_id, [y,m,d], [child_ids]], ...]}
+# Children are per-couple: only children whose birth event lists BOTH this person and the spouse
 print('Exporting marriages...')
-cur.execute('''
-    SELECT p_id, e_id, er_id FROM EventDetails WHERE er_id IN (5,6)
-''')
+cur.execute('SELECT p_id, e_id, er_id FROM EventDetails WHERE er_id IN (5,6)')
 ed_rows = cur.fetchall()
 event_roles = {}
 for pid, eid, er in ed_rows:
     event_roles.setdefault(eid, {})[er] = pid
 cur.execute('SELECT rec_id,y,m,d FROM ValuesDates WHERE rec_table=7 AND f_id=29')
 edates = {r[0]: [r[1], r[2], r[3]] for r in cur.fetchall()}
+
+# Per-couple children: keyed by (father_id, mother_id)
+cur.execute('''
+    SELECT
+        MAX(CASE WHEN ed.er_id=2 THEN ed.p_id END) as fa,
+        MAX(CASE WHEN ed.er_id=3 THEN ed.p_id END) as mo,
+        ed_ch.p_id as ch
+    FROM EventDetails ed
+    JOIN Events e ON e.id=ed.e_id AND e.et_id=1
+    JOIN EventDetails ed_ch ON ed_ch.e_id=ed.e_id AND ed_ch.er_id=1
+    WHERE ed.er_id IN (2,3)
+    GROUP BY ed_ch.p_id
+''')
+couple_children = {}
+for fa, mo, ch in cur.fetchall():
+    couple_children.setdefault((fa, mo), []).append(ch)
+
 marriages = {}
 for eid, roles in event_roles.items():
     for er in [5, 6]:
-        if er in roles:
-            pid   = roles[er]
-            sp_er = 6 if er == 5 else 5
-            sid   = roles.get(sp_er)
-            marriages.setdefault(pid, []).append([sid, edates.get(eid)])
+        if er not in roles: continue
+        pid   = roles[er]
+        sp_er = 6 if er == 5 else 5
+        sid   = roles.get(sp_er)
+        fa    = pid if er == 5 else sid
+        mo    = sid if er == 5 else pid
+        ch    = couple_children.get((fa, mo), [])
+        marriages.setdefault(pid, []).append([sid, edates.get(eid), ch])
+
+# Persons who have children but no marriage record
+for ch_id, (fa_id, mo_id) in parents.items():
+    ch_id = int(ch_id)
+    for par_id in [fa_id, mo_id]:
+        if par_id and par_id not in marriages:
+            marriages[par_id] = [[None, None, []]]
+
 save('marriages', marriages)
 
 # ── Places map ─────────────────────────────────────────────
