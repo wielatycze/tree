@@ -240,11 +240,11 @@ function renderTree(tree) {
   // Each family occupies: max(2 nodes side by side, children spread)
   // We lay out families left-to-right starting after the ancestors block
   const FAM_GAP = 40;  // gap between families
-  const COUPLE_W = NW*2 + GX*3; // root + spouse side by side
-
+  const COUPLE_GAP = GX * 2;
   const famWidths = tree.families.map(fam => {
-    const chW = fam.children.length * (NW+GX) - GX;
-    return Math.max(COUPLE_W, chW);
+    const coupleW = fam.spouse ? NW*2 + COUPLE_GAP : NW;
+    const chW = fam.children.length ? fam.children.length * (NW+GX) - GX : 0;
+    return Math.max(coupleW, chW);
   });
   const totalFamW = famWidths.reduce((a,b)=>a+b, 0) + FAM_GAP*(tree.families.length-1);
 
@@ -303,29 +303,19 @@ function renderTree(tree) {
   let famX = famStartX;
   tree.families.forEach((fam, fi) => {
     const fw = famWidths[fi];
-    const coupleCenter = famX + fw/2;
+    const coupleW = fam.spouse ? NW*2 + COUPLE_GAP : NW;
+    const coupleX = famX + (fw - coupleW)/2;
+    const spouseX = fam.spouse ? coupleX + NW + COUPLE_GAP : null;
 
-    // Position root within this family slot (if only 1 family, it stays at rootX)
-    const thisRootX = tree.families.length === 1 ? rootX : coupleCenter - (NW+GX*1.5)/2;
-    const spouseX   = thisRootX + NW + GX*3;
-
-    // Only re-draw root node for multi-family (first family keeps original)
-    if (fi > 0) {
-      // Draw a secondary root indicator linking from original root
-      addHLine(svg, cx(rootX)+NW/2, cx(thisRootX), Y2+NH/2);
-    }
-
-    // Spouse
     if (fam.spouse) {
       add(fam.spouse, spouseX, Y2);
-      addHLine(svg, cx(thisRootX), cx(spouseX), Y2+NH/2);
+      addHLine(svg, cx(rootX), cx(spouseX), Y2+NH/2);
     }
 
-    // Children fanned below couple
     if (fam.children.length) {
       const chTotalW = fam.children.length*(NW+GX) - GX;
       const chStart  = famX + (fw - chTotalW)/2;
-      const srcX = fam.spouse ? (cx(thisRootX)+cx(spouseX))/2 : cx(thisRootX);
+      const srcX = fam.spouse ? (cx(rootX) + cx(spouseX))/2 : cx(rootX);
 
       fam.children.forEach((ch, ci) => {
         const chx = chStart + ci*(NW+GX);
