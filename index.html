@@ -299,17 +299,20 @@ function renderTree(tree) {
   add(tree.gf_mat, gpx[2], Y0);
   add(tree.gm_mat, gpx[3], Y0);
 
-  const patX = (gpx[0]+gpx[1])/2;
-  const matX = (gpx[2]+gpx[3])/2;
-  add(tree.father, patX, Y1);
-  add(tree.mother, matX, Y1);
+  const patCenter = (gpx[0] + gpx[1]) / 2;
+  const matCenter = (gpx[2] + gpx[3]) / 2;
+  const fatherX = patCenter - NW/2;
+  const motherX = matCenter - NW/2;
+  add(tree.father, fatherX, Y1);
+  add(tree.mother, motherX, Y1);
 
   // ── Root position: centre of ancestor block ──────────────────
-  const rootX = (patX+matX)/2;
+  const rootCenter = (patCenter + matCenter) / 2;
+  const rootX = rootCenter - NW/2;
   add(tree.root, rootX, Y2, true);
 
   // ── Families side by side ────────────────────────────────────
-  const famStartX = rootX + NW/2 - totalFamW / 2;
+  const famStartX = rootCenter - totalFamW / 2;
 
   let famX = famStartX;
   const spouseCenters = [];
