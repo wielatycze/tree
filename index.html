@@ -250,11 +250,173 @@ function renderTree(tree) {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
 
-  const SP_GAP = 24;  // gap between root and each spouse
-  const CH_GAP = GX;  // gap between children
-  const FAM_GAP = 32; // gap between family blocks
-  const LW = 90;      // left margin for gen labels
-  const COUPLE_Y = NH / 2; // vertical midpoint of a node — where hline sits
+  const SP_GAP = 20;   // horizontal gap between adjacent nodes in parent row
+  const CH_GAP = GX;   // horizontal gap between children
+  const LW = 90;       // left margin for gen labels
+
+  // Row Y positions (defined early so HLINE_Y and DROP_Y can use them)
+  const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
+  const HLINE_Y = Y2 + NH/2;       // marriage hline: vertical midpoint of parent row
+  const DROP_Y  = Y2 + NH + 20;    // where child branches start (just below cards)
+
+  // ── Step 1: compute absolute cx for root and each spouse ────
+  // All spouses go to the right of root, packed left-to-right.
+  // spouseCxList[fi] = absolute cx of spouse fi (or null if no spouse)
+  const families = tree.families;
+
+  // First pass: figure out how wide the spouses block is
+  // spouse cx = rootCx + NW/2 + SP_GAP + NW/2  (for first)
+  //           = prev_spouse_cx + NW/2 + SP_GAP + NW/2  (for subsequent)
+  // We'll resolve rootCx after we know how much space children need on the left
+
+  // Relative to rootCx:
+  let nextSpouseOffset = NW/2 + SP_GAP + NW/2; // offset to first spouse cx
+  const spouseOffRel = families.map(fam => {
+    if (!fam.spouse) return null;
+    const off = nextSpouseOffset;
+    nextSpouseOffset += NW/2 + SP_GAP + NW/2;
+    return off;
+  });
+
+  // anchor cx for each family's children (relative to rootCx):
+  // = midpoint of root↔spouse, or rootCx if no spouse
+  const anchorOffRel = families.map((fam, fi) =>
+    spouseOffRel[fi] != null ? spouseOffRel[fi] / 2 : 0
+  );
+
+  // Children block width per family
+  const chWidths = families.map(fam =>
+    fam.children.length > 0 ? fam.children.length * (NW + CH_GAP) - CH_GAP : 0
+  );
+
+  // How far left of rootCx do children reach?
+  let maxLeft = 0;
+  families.forEach((fam, fi) => {
+    const leftEdge = anchorOffRel[fi] - chWidths[fi] / 2;
+    if (leftEdge < 0) maxLeft = Math.max(maxLeft, -leftEdge);
+  });
+
+  // How far right of rootCx do spouses + children reach?
+  let maxRight = spouseOffRel[families.length-1] != null
+    ? spouseOffRel[families.length-1] + NW/2
+    : NW/2;
+  families.forEach((fam, fi) => {
+    const rightEdge = anchorOffRel[fi] + chWidths[fi] / 2;
+    maxRight = Math.max(maxRight, rightEdge);
+  });
+
+  // ── Step 2: resolve rootCx and canvas size ───────────────────
+  const GP_BLOCK = LW + 4*(NW+GX);  // right edge of grandparent block
+  const rootCx = Math.max(
+    LW + maxLeft + NW,               // enough room for left-hanging children
+    GP_BLOCK / 2                     // roughly centred under ancestors
+  );
+
+  const W = Math.max(rootCx + maxRight + 40, GP_BLOCK + 40);
+  const H = 5*GH + 100;
+
+  canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.classList.add('conn');
+  svg.style.cssText = 'width:'+W+'px;height:'+H+'px';
+  canvas.appendChild(svg);
+
+  const rootX = rootCx - NW/2;
+
+  ['Great-grandparents','Grandparents','Parents','Children','Grandchildren'].forEach((lbl,i) => {
+    const s = document.createElement('span');
+    s.className = 'gen-lbl';
+    s.style.top = (Y0 + i*GH + 2) + 'px';
+    s.textContent = lbl;
+    canvas.appendChild(s);
+  });
+
+  function add(p, x, y, isRoot) {
+    const n = makeNode(p, x, y, isRoot||false);
+    if (n) canvas.appendChild(n);
+    return n;
+  }
+
+  // ── Ancestors ───────────────────────────────────────────────
+  const avail = W - LW - 4*(NW+GX);
+  const gap3  = avail / 3;
+  const gpx = [LW, LW+(NW+GX)+gap3, LW+2*(NW+GX)+2*gap3, LW+3*(NW+GX)+3*gap3];
+
+  add(tree.gf_pat, gpx[0], Y0);
+  add(tree.gm_pat, gpx[1], Y0);
+  add(tree.gf_mat, gpx[2], Y0);
+  add(tree.gm_mat, gpx[3], Y0);
+
+  const patCx = (cx(gpx[0]) + cx(gpx[1])) / 2;
+  const matCx = (cx(gpx[2]) + cx(gpx[3])) / 2;
+  add(tree.father, patCx - NW/2, Y1);
+  add(tree.mother, matCx - NW/2, Y1);
+
+  // ── Root ────────────────────────────────────────────────────
+  add(tree.root, rootX, Y2, true);
+
+  // ── Spouses + children ──────────────────────────────────────
+  families.forEach((fam, fi) => {
+    const spOffRel = spouseOffRel[fi];
+    const ancOffRel = anchorOffRel[fi];
+    const spouseCx  = spOffRel != null ? rootCx + spOffRel : null;
+    const anchorCx  = rootCx + ancOffRel;
+
+    // Spouse
+    if (fam.spouse && spouseCx != null) {
+      add(fam.spouse, spouseCx - NW/2, Y2);
+      addHLine(svg, rootCx, spouseCx, HLINE_Y);
+    }
+
+    // Children — elbow from anchorCx at DROP_Y
+    if (fam.children.length > 0) {
+      const chW   = chWidths[fi];
+      const chStart = anchorCx - chW / 2;
+
+      // Vertical stub from hline down to DROP_Y
+      addStraightPath(svg, anchorCx, HLINE_Y, anchorCx, DROP_Y, '#7bc8a8');
+
+      // Horizontal collector bar spanning all children of this family
+      if (fam.children.length > 1) {
+        const barLeft  = cx(chStart);
+        const barRight = cx(chStart + (fam.children.length - 1) * (NW + CH_GAP));
+        addHLine(svg, barLeft, barRight, DROP_Y);
+      }
+
+      // Drop from bar to each child
+      fam.children.forEach((ch, ci) => {
+        const chx  = chStart + ci * (NW + CH_GAP);
+        const chcx = cx(chx);
+        add(ch, chx, Y3);
+        // Short vertical drop from bar to child top
+        const p = document.createElementNS('http://www.w3.org/2000/svg','line');
+        p.setAttribute('x1', chcx); p.setAttribute('y1', DROP_Y);
+        p.setAttribute('x2', chcx); p.setAttribute('y2', Y3);
+        p.setAttribute('stroke', '#7bc8a8'); p.setAttribute('stroke-width','1.5');
+        svg.appendChild(p);
+      });
+    }
+  });
+
+  // ── Ancestor connectors ──────────────────────────────────────
+  if (tree.gf_pat && tree.father) addPath(svg, cx(gpx[0]), bot(Y0), patCx, Y1, '#90b8e8');
+  if (tree.gm_pat && tree.father) addPath(svg, cx(gpx[1]), bot(Y0), patCx, Y1, '#e898b8');
+  if (tree.gf_mat && tree.mother) addPath(svg, cx(gpx[2]), bot(Y0), matCx, Y1, '#90b8e8');
+  if (tree.gm_mat && tree.mother) addPath(svg, cx(gpx[3]), bot(Y0), matCx, Y1, '#e898b8');
+  if (tree.father) addPath(svg, patCx, bot(Y1), rootCx, Y2, '#7ca8d8');
+  if (tree.mother) addPath(svg, matCx, bot(Y1), rootCx, Y2, '#d87898');
+
+  currentRootId = tree.root.id;
+  document.getElementById('crumb').textContent =
+    [tree.root.surname||tree.root.maiden, tree.root.given, tree.root.patronymic].filter(Boolean).join(' ');
+  history.replaceState(null, '', '#' + tree.root.id);
+
+  setTimeout(() => {
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.scrollLeft = rootCx - wrap.clientWidth / 2;
+    wrap.scrollTop  = Y2 - 120;
+  }, 50);
+}
 
   // ── Pre-compute layout for each family ──────────────────────
   // A family block = spouse node (if any) + children row beneath
@@ -328,14 +490,7 @@ function renderTree(tree) {
   const W = Math.max(rootCx + maxRightOfRoot + 40, ancestorNeeded + 40);
   const H = 5*GH + 80;
 
-  canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.classList.add('conn');
-  svg.style.cssText = 'width:'+W+'px;height:'+H+'px';
-  canvas.appendChild(svg);
-
-  const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
-  const rootX = rootCx - NW/2; // left edge of root node
+  canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative'; // left edge of root node
 
   ['Great-grandparents','Grandparents','Parents','Children','Grandchildren'].forEach((lbl,i) => {
     const s = document.createElement('span');
