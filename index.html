@@ -378,21 +378,20 @@ function renderTree(tree) {
 
   // ── Per-family: spouse node + children ───────────────────────
   families.forEach((fam, fi) => {
-    // Absolute anchor cx (centre of this family's block)
-    const anchorCx = rootCx + NW/2 + anchorRel[fi];
-    // Spouse sits at anchorCx
-    const spouseCx = anchorCx;
+    // Spouse sits at the block centre; anchor = midpoint of root↔spouse hline
+    const spouseCx = rootCx + NW/2 + anchorRel[fi];
+    const anchorCx = fam.spouse ? (rootCx + spouseCx) / 2 : rootCx;
 
     if (fam.spouse) {
       add(fam.spouse, spouseCx - NW/2, Y2);
     }
 
     if (fam.children.length > 0) {
-      const chW    = famChW[fi];
+      const chW     = famChW[fi];
       const chStart = anchorCx - chW / 2;
+      const stubColor = '#7bc8a8';
 
       // Vertical stub from hline down to DROP_Y
-      const stubColor = '#7bc8a8';
       const stub = document.createElementNS('http://www.w3.org/2000/svg','line');
       stub.setAttribute('x1', anchorCx); stub.setAttribute('y1', HLINE_Y);
       stub.setAttribute('x2', anchorCx); stub.setAttribute('y2', DROP_Y);
@@ -402,7 +401,7 @@ function renderTree(tree) {
       // Horizontal collector bar
       if (fam.children.length > 1) {
         const barL = cx(chStart);
-        const barR = cx(chStart + (fam.children.length-1) * (NW+CH_GAP));
+        const barR = cx(chStart + (fam.children.length - 1) * (NW + CH_GAP));
         const bar = document.createElementNS('http://www.w3.org/2000/svg','line');
         bar.setAttribute('x1', barL); bar.setAttribute('y1', DROP_Y);
         bar.setAttribute('x2', barR); bar.setAttribute('y2', DROP_Y);
