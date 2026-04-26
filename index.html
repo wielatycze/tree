@@ -131,7 +131,7 @@ let SI,PA,CH,MA,PL,NU,BI,DE;
 })();
 
 // ── Helpers ───────────────────────────────────────────────────
-const NW=152, NH=88, GX=20, GY=56, GH=NH+GY;
+const NW=152, NH=88, GX=20, GY=80, GH=NH+GY;
 
 function pad(n) { return n ? String(n).padStart(2,'0') : '??'; }
 function fmtd(d) {
@@ -259,7 +259,7 @@ function renderTree(tree) {
 
   const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
   const HLINE_Y = Y2 + Math.round(NH/2);
-  const DROP_Y  = Y2 + NH + 20;
+  const DROP_Y  = Y2 + NH + Math.round(GY*0.6);  // 60% into the gap
 
   const families = tree.families;
 
