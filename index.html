@@ -252,10 +252,9 @@ function renderTree(tree) {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
 
-  const CH_GAP  = GX;   // gap between siblings
-  const FAM_GAP = 32;   // gap between family blocks
-  const SP_GAP  = 24;   // gap between root node and first spouse node
-  const LW      = 90;   // left label margin
+  const CH_GAP  = GX;
+  const FAM_GAP = 40;
+  const LW      = 90;
 
   const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
   const HLINE_Y = Y2 + Math.round(NH/2);
@@ -263,70 +262,49 @@ function renderTree(tree) {
 
   const families = tree.families;
 
-  // ── Step 1: size each family block ───────────────────────────
-  // A family block contains:
-  //   - one spouse node (NW wide), or nothing
-  //   - children spread below, centred under the midpoint of [root-right .. spouse-right]
-  //
-  // We size the block so children never overflow it.
-  // Block width = max(NW, children_spread).
-  // The "slot" for the spouse is the rightmost NW of the block.
-  // The anchor (drop point) = block_left + block_width/2  ... BUT
-  // we want anchor = midpoint of root↔spouse on the hline.
-  //
-  // So: fix spouse at block_right - NW/2 (cx), anchor = (rootCx + spouseCx)/2.
-  // For this to not overlap, block must be wide enough that:
-  //   children spread centred at anchor fits within block.
-  //
-  // children half-width = chW/2
-  // anchor relative to block left = blockW - NW/2  ... no, anchor depends on rootCx.
-  //
-  // Easier: lay blocks left-to-right in absolute coords.
-  // blockLeft[fi] = absolute left edge of family block fi.
-  // spouseCx[fi]  = blockLeft[fi] + blockW[fi] - NW/2  (spouse at right of block)
-  // anchorCx[fi]  = (rootCx + spouseCx[fi]) / 2
-  // children spread centred at anchorCx[fi], must fit inside [blockLeft[fi], blockLeft[fi]+blockW[fi]]
-  //
-  // We don't know rootCx yet — so do two passes.
-  // Pass 1: compute blockW assuming rootCx=0, get relative positions.
-  // Pass 2: shift everything right by actual rootCx.
+  // ── Layout: place each family's children block independently ──
+  // Each block has:
+  //   chW   = width of children spread (0 if no children)
+  //   blockW = max(NW, chW)  — must fit at least a spouse node
+  //   blockCx = centre of block = where the drop stub descends
+  //   spouseCx = blockCx (spouse sits at centre of block)
+  //   children start at blockCx - chW/2
 
-  // chW[fi] = total width of children row
-  const chW = families.map(fam =>
+  const famChW = families.map(fam =>
     fam.children.length > 0 ? fam.children.length*(NW+CH_GAP) - CH_GAP : 0
   );
+  const famBlockW = families.map((_, fi) => Math.max(NW, famChW[fi]));
 
-  // blockW[fi]: wide enough to hold spouse + children centred at midpoint
-  // spouse at right: spouseCxRel = blockW - NW/2
-  // anchor = spouseCxRel / 2  (since rootCx=0 in relative coords)
-  // children left = anchor - chW/2  must be >= 0
-  // children right = anchor + chW/2  must be <= blockW
-  // anchor = (blockW - NW/2) / 2 = blockW/2 - NW/4
-  // children right = blockW/2 - NW/4 + chW/2 <= blockW
-  //   => chW/2 - NW/4 <= blockW/2  => blockW >= chW - NW/2
-  // children left = blockW/2 - NW/4 - chW/2 >= 0
-  //   => blockW >= chW + NW/2 ... wait let me just set blockW = max(NW, chW + NW/2) to be safe
-  // Actually simpler: just ensure blockW >= NW (for spouse) and blockW >= chW
-  const blockW = families.map((fam, fi) => Math.max(NW, chW[fi]));
-
-  // Stack blocks left-to-right starting at offset SP_GAP from root right edge (rootCx)
-  // blockLeftRel[fi] = left edge relative to rootCx (positive = right of root cx)
-  const blockLeftRel = [];
-  let cursor = SP_GAP - NW/2; // SP_GAP from rootCx, but blockLeft is an absolute x
-  // Actually: first block starts at rootCx + SP_GAP (left edge of first spouse/block area)
-  // We'll store offsets from rootCx:
-  cursor = SP_GAP; // distance from rootCx to left edge of block 0
-  families.forEach((fam, fi) => {
-    blockLeftRel.push(cursor);
-    cursor += blockW[fi] + FAM_GAP;
+  // Stack blocks left-to-right. We'll place them relative to an origin,
+  // then shift so root ends up in the right place.
+  // blockCxRel[fi] = block centre, relative to the left edge of block 0
+  const blockCxRel = [];
+  let cursor = 0;
+  families.forEach((_, fi) => {
+    blockCxRel.push(cursor + famBlockW[fi] / 2);
+    cursor += famBlockW[fi] + FAM_GAP;
   });
-  const totalRight = cursor - FAM_GAP; // how far right of rootCx we need
+  const totalBlocksW = cursor - FAM_GAP; // total width of all blocks
 
-  // ── Step 2: resolve rootCx ───────────────────────────────────
+  // Root sits SP_GAP to the left of the first block's left edge.
+  // So rootCx = -SP_GAP - NW/2 relative to block 0 left... 
+  // Actually: rootCx is independent. We just need:
+  //   1. rootCx >= LW + NW/2  (not off-screen left)
+  //   2. block 0 left edge >= LW (not off-screen left)
+  // We place block 0 starting at rootCx + NW/2 + SP_GAP_FROM_ROOT
+  // But that ties rootCx to block positions.
+  // Simplest: place root at fixed position, blocks start to its right.
+
+  const SP_GAP = 24;  // gap from root right edge to block 0 left edge
   const GP_BLOCK = LW + 4*(NW+GX);
-  const rootCx = Math.max(LW + NW, GP_BLOCK / 2);
+  const rootCx = Math.max(LW + NW/2, GP_BLOCK / 2);
 
-  const W = Math.max(rootCx + totalRight + 40, GP_BLOCK + 40);
+  // block 0 left edge = rootCx + NW/2 + SP_GAP
+  const block0Left = rootCx + NW/2 + SP_GAP;
+  // absolute block centres
+  const blockCxAbs = blockCxRel.map(r => block0Left + r);
+
+  const W = Math.max(block0Left + totalBlocksW + 40, GP_BLOCK + 40);
   const H = 5*GH + 100;
 
   canvas.style.cssText = 'width:'+W+'px;height:'+H+'px;position:relative';
@@ -368,38 +346,34 @@ function renderTree(tree) {
   // ── Root ─────────────────────────────────────────────────────
   add(tree.root, rootX, Y2, true);
 
-  // ── Spouses + children ───────────────────────────────────────
-  // Compute absolute positions for each family
-  const spouseCxArr  = families.map((fam, fi) =>
-    fam.spouse ? rootCx + blockLeftRel[fi] + blockW[fi] - NW/2 : null
-  );
-  const anchorCxArr  = families.map((fam, fi) =>
-    spouseCxArr[fi] != null ? (rootCx + spouseCxArr[fi]) / 2 : rootCx
-  );
+  // ── Marriage hline: root → last spouse ───────────────────────
+  // Draw from rootCx to rightmost block centre (last spouse)
+  if (families.length > 0 && families.some(f => f.spouse)) {
+    let hlineRight = rootCx;
+    families.forEach((fam, fi) => {
+      if (fam.spouse) hlineRight = Math.max(hlineRight, blockCxAbs[fi]);
+    });
+    addHLine(svg, rootCx, hlineRight, HLINE_Y);
+  }
 
-  // Draw continuous hline from rootCx to last spouse
-  let hlineEnd = rootCx;
-  spouseCxArr.forEach(scx => { if (scx != null) hlineEnd = Math.max(hlineEnd, scx); });
-  if (hlineEnd > rootCx) addHLine(svg, rootCx, hlineEnd, HLINE_Y);
-
-  // Draw each family's spouse node + children
+  // ── Per family: spouse + children ────────────────────────────
   families.forEach((fam, fi) => {
-    const spCx  = spouseCxArr[fi];
-    const anCx  = anchorCxArr[fi];
-    const famChW = chW[fi];
+    const blkCx = blockCxAbs[fi];   // centre of block = spouse cx = anchor cx
+    const cw    = famChW[fi];
 
-    if (fam.spouse && spCx != null) {
-      add(fam.spouse, spCx - NW/2, Y2);
+    // Spouse node centred at blkCx
+    if (fam.spouse) {
+      add(fam.spouse, blkCx - NW/2, Y2);
     }
 
     if (fam.children.length > 0) {
-      const chStart = anCx - famChW / 2;
-      const color = '#7bc8a8';
+      const chStart = blkCx - cw / 2;
+      const color   = '#7bc8a8';
 
-      // Vertical stub from hline to DROP_Y
+      // Vertical stub down from hline
       const stub = document.createElementNS('http://www.w3.org/2000/svg','line');
-      stub.setAttribute('x1', anCx); stub.setAttribute('y1', HLINE_Y);
-      stub.setAttribute('x2', anCx); stub.setAttribute('y2', DROP_Y);
+      stub.setAttribute('x1', blkCx); stub.setAttribute('y1', HLINE_Y);
+      stub.setAttribute('x2', blkCx); stub.setAttribute('y2', DROP_Y);
       stub.setAttribute('stroke', color); stub.setAttribute('stroke-width','1.5');
       svg.appendChild(stub);
 
@@ -439,8 +413,6 @@ function renderTree(tree) {
   currentRootId = tree.root.id;
   document.getElementById('crumb').textContent =
     [tree.root.surname||tree.root.maiden, tree.root.given, tree.root.patronymic].filter(Boolean).join(' ');
-
-  // Only update hash if it actually changed, to avoid triggering hashchange
   const newHash = '#' + tree.root.id;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
