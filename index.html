@@ -200,7 +200,10 @@ function makeNode(p, x, y, isRoot) {
   div.className = 'node' + (p.sex===1?' sex-m':p.sex===2?' sex-f':'') + (isRoot?' root':'');
   div.style.cssText = 'left:' + x + 'px;top:' + y + 'px';
   div.dataset.id = p.id;
-  const name = [p.surname||p.maiden, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
+  const surnamePart = p.surname
+    ? (p.maiden && p.maiden !== p.surname ? p.surname+' ('+p.maiden+')' : p.surname)
+    : (p.maiden || null);
+  const name = [surnamePart, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
   const dates = (p.birth||p.death) ? fmtd(p.birth) + ' — ' + fmtd(p.death) : '';
   div.innerHTML =
     '<div class="nm">' + name + '</div>' +
@@ -351,11 +354,11 @@ function renderTree(tree) {
     if(dash)l.setAttribute("stroke-dasharray","5,4");
     svg.appendChild(l);
   }
-  // Straight elbow: vertical then horizontal then vertical
-  function elbow(x1,y1,x2,y2,stroke){
-    const mid=(y1+y2)/2;
+  // Straight elbow with explicit midY for the horizontal bar
+  function elbow(x1,y1,x2,y2,stroke,midY){
+    const my = midY !== undefined ? midY : y1 + Math.round((y2-y1)*0.6);
     const p=document.createElementNS("http://www.w3.org/2000/svg","polyline");
-    p.setAttribute("points",x1+","+y1+" "+x1+","+mid+" "+x2+","+mid+" "+x2+","+y2);
+    p.setAttribute("points",x1+","+y1+" "+x1+","+my+" "+x2+","+my+" "+x2+","+y2);
     p.setAttribute("stroke",stroke);p.setAttribute("stroke-width","1.5");
     p.setAttribute("fill","none");
     svg.appendChild(p);
@@ -401,13 +404,49 @@ function renderTree(tree) {
     });
   });
 
-  // ── Ancestor connectors (straight elbows) ─────────────────────
-  if(tree.gf_pat&&tree.father) elbow(cx(gpx[0]),bot(Y0),patCx,Y1,"#90b8e8");
-  if(tree.gm_pat&&tree.father) elbow(cx(gpx[1]),bot(Y0),patCx,Y1,"#e898b8");
-  if(tree.gf_mat&&tree.mother) elbow(cx(gpx[2]),bot(Y0),matCx,Y1,"#90b8e8");
-  if(tree.gm_mat&&tree.mother) elbow(cx(gpx[3]),bot(Y0),matCx,Y1,"#e898b8");
-  if(tree.father) elbow(patCx,bot(Y1),rootCx,Y2,"#7ca8d8");
-  if(tree.mother) elbow(matCx,bot(Y1),rootCx,Y2,"#d87898");
+  // ── Ancestor connectors ──────────────────────────────────────
+  const midGap01 = bot(Y0) + Math.round(GY*0.5);
+  const midGap12 = bot(Y1) + Math.round(GY*0.5);
+
+  // Grandparents -> father
+  if(tree.father){
+    if(tree.gf_pat){ sline(cx(gpx[0]),bot(Y0),cx(gpx[0]),midGap01,"#90b8e8",false); }
+    if(tree.gm_pat){ sline(cx(gpx[1]),bot(Y0),cx(gpx[1]),midGap01,"#e898b8",false); }
+    const leftGpCx  = tree.gf_pat ? cx(gpx[0]) : null;
+    const rightGpCx = tree.gm_pat ? cx(gpx[1]) : null;
+    const gpBarL = leftGpCx ?? rightGpCx;
+    const gpBarR = rightGpCx ?? leftGpCx;
+    if(gpBarL && gpBarR && gpBarL !== gpBarR) sline(gpBarL,midGap01,gpBarR,midGap01,"#aaa",false);
+    if(gpBarL) sline(patCx,midGap01,gpBarL !== gpBarR ? (gpBarL+gpBarR)/2 : gpBarL,midGap01,"#7ca8d8",false);
+    sline(patCx,midGap01,patCx,Y1,"#7ca8d8",false);
+    sline(patCx,bot(Y1),patCx,midGap12,"#7ca8d8",false);
+  }
+
+  // Grandparents -> mother
+  if(tree.mother){
+    if(tree.gf_mat){ sline(cx(gpx[2]),bot(Y0),cx(gpx[2]),midGap01,"#90b8e8",false); }
+    if(tree.gm_mat){ sline(cx(gpx[3]),bot(Y0),cx(gpx[3]),midGap01,"#e898b8",false); }
+    const leftGpCx  = tree.gf_mat ? cx(gpx[2]) : null;
+    const rightGpCx = tree.gm_mat ? cx(gpx[3]) : null;
+    const gpBarL = leftGpCx ?? rightGpCx;
+    const gpBarR = rightGpCx ?? leftGpCx;
+    if(gpBarL && gpBarR && gpBarL !== gpBarR) sline(gpBarL,midGap01,gpBarR,midGap01,"#aaa",false);
+    if(gpBarL) sline(matCx,midGap01,gpBarL !== gpBarR ? (gpBarL+gpBarR)/2 : gpBarL,midGap01,"#d87898",false);
+    sline(matCx,midGap01,matCx,Y1,"#d87898",false);
+    sline(matCx,bot(Y1),matCx,midGap12,"#d87898",false);
+  }
+
+  // Parents -> root
+  if(tree.father&&tree.mother){
+    sline(patCx,midGap12,matCx,midGap12,"#aaa",false);
+    sline(rootCx,midGap12,rootCx,Y2,"#999",false);
+  } else if(tree.father){
+    sline(patCx,midGap12,rootCx,midGap12,"#7ca8d8",false);
+    sline(rootCx,midGap12,rootCx,Y2,"#7ca8d8",false);
+  } else if(tree.mother){
+    sline(matCx,midGap12,rootCx,midGap12,"#d87898",false);
+    sline(rootCx,midGap12,rootCx,Y2,"#d87898",false);
+  }
 
   currentRootId=tree.root.id;
   document.getElementById("crumb").textContent=
@@ -426,7 +465,10 @@ function renderTree(tree) {
 function showPanel(p, node) {
   document.querySelectorAll('.node.sel').forEach(n => n.classList.remove('sel'));
   if (node) node.classList.add('sel');
-  const name = [p.surname||p.maiden, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
+  const surnamePart = p.surname
+    ? (p.maiden && p.maiden !== p.surname ? p.surname+' ('+p.maiden+')' : p.surname)
+    : (p.maiden || null);
+  const name = [surnamePart, p.given, p.patronymic].filter(Boolean).join(' ') || 'Person #'+p.id;
   document.getElementById('pname').textContent = name;
   const parts = [];
   if (p.birth) parts.push('Born: ' + fmtd(p.birth));
@@ -483,7 +525,7 @@ function initSearch() {
       sres.innerHTML = '';
       if (!matches.length) { sres.style.display = 'none'; return; }
       matches.forEach(r => {
-        const name = [r[4]||r[5], r[2], r[3]].filter(Boolean).join(' ');
+        const name = [r[4]?(r[5]&&r[5]!==r[4]?r[4]+' ('+r[5]+')':r[4]):(r[5]||null), r[2], r[3]].filter(Boolean).join(' ');
         const div  = document.createElement('div');
         div.className = 'sri';
         div.innerHTML =
