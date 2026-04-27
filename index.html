@@ -253,75 +253,65 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   const CH_GAP   = GX;
-  const SP_GAP   = 32;   // gap between root node edge and spouse node edge
-  const FAM_GAP  = 40;   // gap between child groups
-  const LW       = 90;   // left label margin
-  const STAGGER  = 22;   // vertical stagger between family bars (upward for later families)
+  const SP_GAP   = 32;
+  const FAM_GAP  = 40;
+  const LW       = 90;
+  const STAGGER  = 22;
 
   const Y0=24, Y1=Y0+GH, Y2=Y1+GH, Y3=Y2+GH;
   const HLINE_Y    = Y2 + Math.round(NH/2);
   const BASE_DROP_Y = Y2 + NH + 36;
 
   const families = tree.families;
-
   families.forEach(fam => {
-    fam.children.sort((a,b) => ((a.birth&&a.birth[0])||9999)-((b.birth&&b.birth[0])||9999));
+    fam.children.sort((a,b)=>((a.birth&&a.birth[0])||9999)-((b.birth&&b.birth[0])||9999));
   });
 
-  // >1 family: first LEFT, rest RIGHT.  1 family: RIGHT.
   const leftFams  = families.length > 1 ? [families[0]] : [];
   const rightFams = families.length > 1 ? families.slice(1) : families;
 
-  // Spouse positions relative to rootCx (to be resolved below)
-  const leftSpouseRel  = leftFams.map((_,i)  => -(NW/2 + SP_GAP + NW/2 + i*(NW+SP_GAP)));
-  const rightSpouseRel = rightFams.map((_,i) =>   NW/2 + SP_GAP + NW/2 + i*(NW+SP_GAP));
+  // Spouse offsets relative to rootCx
+  const leftSpouseRel  = leftFams.map((_,i)  => -(NW/2+SP_GAP+NW/2+i*(NW+SP_GAP)));
+  const rightSpouseRel = rightFams.map((_,i) =>   NW/2+SP_GAP+NW/2+i*(NW+SP_GAP));
 
-  // Anchor per family = midpoint root <-> spouse
-  // (resolved after rootCx is known, stored as relative offsets first)
-  const leftAnchorRel  = leftSpouseRel.map(r  => r  / 2);
-  const rightAnchorRel = rightSpouseRel.map(r => r  / 2);
-
-  // Child group widths
+  // Anchor offsets: midpoint root<->spouse
   const orderedFams = [...leftFams, ...rightFams];
-  const orderedAnchorRel = [...leftAnchorRel, ...rightAnchorRel];
+  const orderedAnchorRel = [
+    ...leftSpouseRel.map(r  => r/2),
+    ...rightSpouseRel.map(r => r/2)
+  ];
+
   const groupW = orderedFams.map(fam =>
     fam.children.length > 0 ? fam.children.length*(NW+CH_GAP)-CH_GAP : 0
   );
-  const nonEmpty = orderedFams.map((_,i) => orderedFams[i].children.length > 0);
+  const hasChildren = orderedFams.map(f => f.children.length > 0);
   const totalChW = groupW.reduce((s,w)=>s+w,0) +
-    Math.max(0, groupW.filter((_,i)=>nonEmpty[i]).length - 1) * FAM_GAP;
+    Math.max(0, groupW.filter((_,i)=>hasChildren[i]).length-1)*FAM_GAP;
 
   // ── Resolve rootCx ───────────────────────────────────────────
-  // Constraints:
-  //   A) leftmost spouse left edge >= LW + 10
-  //   B) children row left edge >= LW + 10
-  //   C) grandparents row starts at LW (already fixed)
-  //
-  // Children row is centred at rootCx (ideally), starting at rootCx - totalChW/2
-  // So: rootCx - totalChW/2 >= LW + 10  →  rootCx >= LW + 10 + totalChW/2
-  //
-  // Leftmost spouse: rootCx + leftSpouseRel[last] - NW/2 >= LW + 10
-  const leftEdgeConstraint = leftSpouseRel.length
-    ? LW + 10 - (leftSpouseRel[leftSpouseRel.length-1] - NW/2)
-    : LW + 10;
-  const childEdgeConstraint = LW + 10 + totalChW/2;
-  const GP_BLOCK = LW + 4*(NW+GX);
-  const rootCx = Math.max(leftEdgeConstraint, childEdgeConstraint, GP_BLOCK/2);
+  // Needs to satisfy:
+  //   1. leftmost spouse >= LW+10
+  //   2. children row (centred at rootCx) >= LW+10 on left edge
+  //   3. grandparents row (4 slots centred around rootCx) >= LW on left edge
+  //      → gp block width = 4*(NW+GX)-GX, centred at rootCx
+  //      → rootCx - (4*(NW+GX)-GX)/2 >= LW  →  rootCx >= LW + (4*(NW+GX)-GX)/2
+  const GP_W = 4*(NW+GX)-GX;
+  const gpConstraint   = LW + GP_W/2;
+  const leftConstraint = leftSpouseRel.length
+    ? LW+10-(leftSpouseRel[leftSpouseRel.length-1]-NW/2) : 0;
+  const childConstraint = totalChW > 0 ? LW+10+totalChW/2 : 0;
+  const rootCx = Math.max(gpConstraint, leftConstraint, childConstraint, LW+NW);
 
-  // Absolute positions
-  const leftSpouseCx  = leftSpouseRel.map(r  => rootCx + r);
-  const rightSpouseCx = rightSpouseRel.map(r => rootCx + r);
-  const orderedAnchorCx = orderedAnchorRel.map(r => rootCx + r);
+  const leftSpouseCx  = leftSpouseRel.map(r  => rootCx+r);
+  const rightSpouseCx = rightSpouseRel.map(r => rootCx+r);
+  const orderedAnchorCx = orderedAnchorRel.map(r => rootCx+r);
 
   const rightmost = rightSpouseRel.length
-    ? rootCx + rightSpouseRel[rightSpouseRel.length-1] + NW/2
-    : rootCx + NW/2;
+    ? rootCx+rightSpouseRel[rightSpouseRel.length-1]+NW/2 : rootCx+NW/2;
 
-  // Children row start: try to centre under rootCx, but clamp to LW+10
-  const chRowStart = Math.max(LW + 10, rootCx - totalChW/2);
-
-  const W = Math.max(chRowStart + totalChW + 40, rightmost + 40, GP_BLOCK + 60);
-  const H = 5*GH + 100;
+  const chRowStart = Math.max(LW+10, rootCx-totalChW/2);
+  const W = Math.max(chRowStart+totalChW+40, rightmost+40, rootCx+GP_W/2+40);
+  const H = 5*GH+100;
 
   canvas.style.cssText = "width:"+W+"px;height:"+H+"px;position:relative";
   const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
@@ -329,23 +319,19 @@ function renderTree(tree) {
   svg.style.cssText = "width:"+W+"px;height:"+H+"px";
   canvas.appendChild(svg);
 
-  const rootX = rootCx - NW/2;
+  const rootX = rootCx-NW/2;
 
-  ["Great-grandparents","Grandparents","Parents","Children","Grandchildren"].forEach((lbl,i) => {
-    const s = document.createElement("span");
-    s.className = "gen-lbl";
-    s.style.top = (Y0+i*GH+2)+"px";
-    s.textContent = lbl;
+  ["Great-grandparents","Grandparents","Parents","Children","Grandchildren"].forEach((lbl,i)=>{
+    const s=document.createElement("span");
+    s.className="gen-lbl"; s.style.top=(Y0+i*GH+2)+"px"; s.textContent=lbl;
     canvas.appendChild(s);
   });
 
-  function add(p, x, y, isRoot) {
-    const n = makeNode(p, x, y, isRoot||false);
-    if (n) canvas.appendChild(n);
-    return n;
+  function add(p,x,y,isRoot){
+    const n=makeNode(p,x,y,isRoot||false); if(n)canvas.appendChild(n); return n;
   }
-  function sline(x1,y1,x2,y2,stroke,dash) {
-    const l = document.createElementNS("http://www.w3.org/2000/svg","line");
+  function sline(x1,y1,x2,y2,stroke,dash){
+    const l=document.createElementNS("http://www.w3.org/2000/svg","line");
     l.setAttribute("x1",x1);l.setAttribute("y1",y1);
     l.setAttribute("x2",x2);l.setAttribute("y2",y2);
     l.setAttribute("stroke",stroke);l.setAttribute("stroke-width","1.5");
@@ -353,79 +339,70 @@ function renderTree(tree) {
     svg.appendChild(l);
   }
 
-  // ── Ancestors ────────────────────────────────────────────────
-  // Grandparents spread evenly; but first slot must be >= LW
-  const avail = W - LW - 4*(NW+GX);
-  const gap3  = avail/3;
-  const gpx   = [LW, LW+(NW+GX)+gap3, LW+2*(NW+GX)+2*gap3, LW+3*(NW+GX)+3*gap3];
+  // ── Ancestors centred around rootCx ──────────────────────────
+  // Place 4 grandparent slots symmetrically around rootCx
+  const gpSlot = NW+GX;
+  const gpLeft = rootCx - GP_W/2;  // left edge of gp block
+  const gpx = [gpLeft, gpLeft+gpSlot, gpLeft+2*gpSlot, gpLeft+3*gpSlot];
   add(tree.gf_pat,gpx[0],Y0); add(tree.gm_pat,gpx[1],Y0);
   add(tree.gf_mat,gpx[2],Y0); add(tree.gm_mat,gpx[3],Y0);
-  const patCx=(cx(gpx[0])+cx(gpx[1]))/2, matCx=(cx(gpx[2])+cx(gpx[3]))/2;
-  add(tree.father,patCx-NW/2,Y1); add(tree.mother,matCx-NW/2,Y1);
+  const patCx=(cx(gpx[0])+cx(gpx[1]))/2;
+  const matCx=(cx(gpx[2])+cx(gpx[3]))/2;
+  add(tree.father,patCx-NW/2,Y1);
+  add(tree.mother,matCx-NW/2,Y1);
 
   // ── Root ─────────────────────────────────────────────────────
-  add(tree.root, rootX, Y2, true);
+  add(tree.root,rootX,Y2,true);
 
   // ── Spouses + hlines ─────────────────────────────────────────
-  leftFams.forEach((fam,i) => {
-    const scx = leftSpouseCx[i];
-    if (fam.spouse) add(fam.spouse, scx-NW/2, Y2);
-    sline(scx, HLINE_Y, rootCx, HLINE_Y, "#bbb", true);
+  leftFams.forEach((fam,i)=>{
+    const scx=leftSpouseCx[i];
+    if(fam.spouse)add(fam.spouse,scx-NW/2,Y2);
+    sline(scx,HLINE_Y,rootCx,HLINE_Y,"#bbb",true);
   });
-  rightFams.forEach((fam,i) => {
-    const scx = rightSpouseCx[i];
-    if (fam.spouse) add(fam.spouse, scx-NW/2, Y2);
-    sline(rootCx, HLINE_Y, scx, HLINE_Y, "#bbb", true);
+  rightFams.forEach((fam,i)=>{
+    const scx=rightSpouseCx[i];
+    if(fam.spouse)add(fam.spouse,scx-NW/2,Y2);
+    sline(rootCx,HLINE_Y,scx,HLINE_Y,"#bbb",true);
   });
 
   // ── Children ─────────────────────────────────────────────────
-  // Stagger: family 0 bar is lowest (BASE_DROP_Y), each subsequent family bar is
-  // STAGGER px HIGHER — so later-family lines never cross earlier ones.
-  const nGroups = orderedFams.filter((_,i) => nonEmpty[i]).length;
-  let chX = chRowStart;
-  let groupIdx = 0;
-  orderedFams.forEach((fam, fi) => {
-    if (!nonEmpty[fi]) return;
-    const bw     = groupW[fi];
-    const anc    = orderedAnchorCx[fi];
-    // Family 0 = deepest bar; each subsequent = STAGGER higher
-    const DROP_Y = BASE_DROP_Y - groupIdx * STAGGER;
-    const firstCx = cx(chX);
-    const lastCx  = cx(chX + (fam.children.length-1)*(NW+CH_GAP));
-    const barL    = Math.min(anc, firstCx);
-    const barR    = Math.max(anc, lastCx);
-
-    sline(anc, HLINE_Y, anc, DROP_Y, "#7bc8a8", false);
-    sline(barL, DROP_Y, barR, DROP_Y, "#7bc8a8", false);
-    fam.children.forEach((ch,ci) => {
-      const x = chX + ci*(NW+CH_GAP);
-      add(ch, x, Y3);
-      sline(cx(x), DROP_Y, cx(x), Y3, "#7bc8a8", false);
+  let chX=chRowStart, groupIdx=0;
+  orderedFams.forEach((fam,fi)=>{
+    if(!hasChildren[fi])return;
+    const bw    = groupW[fi];
+    const anc   = orderedAnchorCx[fi];
+    const DROP_Y = BASE_DROP_Y - groupIdx*STAGGER;
+    const firstCx=cx(chX), lastCx=cx(chX+(fam.children.length-1)*(NW+CH_GAP));
+    sline(anc,HLINE_Y,anc,DROP_Y,"#7bc8a8",false);
+    sline(Math.min(anc,firstCx),DROP_Y,Math.max(anc,lastCx),DROP_Y,"#7bc8a8",false);
+    fam.children.forEach((ch,ci)=>{
+      const x=chX+ci*(NW+CH_GAP);
+      add(ch,x,Y3);
+      sline(cx(x),DROP_Y,cx(x),Y3,"#7bc8a8",false);
     });
-
-    chX += bw + FAM_GAP;
-    groupIdx++;
+    chX+=bw+FAM_GAP; groupIdx++;
   });
 
   // ── Ancestor connectors ──────────────────────────────────────
-  if(tree.gf_pat&&tree.father) addPath(svg,cx(gpx[0]),bot(Y0),patCx,Y1,"#90b8e8");
-  if(tree.gm_pat&&tree.father) addPath(svg,cx(gpx[1]),bot(Y0),patCx,Y1,"#e898b8");
-  if(tree.gf_mat&&tree.mother) addPath(svg,cx(gpx[2]),bot(Y0),matCx,Y1,"#90b8e8");
-  if(tree.gm_mat&&tree.mother) addPath(svg,cx(gpx[3]),bot(Y0),matCx,Y1,"#e898b8");
-  if(tree.father) addPath(svg,patCx,bot(Y1),rootCx,Y2,"#7ca8d8");
-  if(tree.mother) addPath(svg,matCx,bot(Y1),rootCx,Y2,"#d87898");
+  if(tree.gf_pat&&tree.father)addPath(svg,cx(gpx[0]),bot(Y0),patCx,Y1,"#90b8e8");
+  if(tree.gm_pat&&tree.father)addPath(svg,cx(gpx[1]),bot(Y0),patCx,Y1,"#e898b8");
+  if(tree.gf_mat&&tree.mother)addPath(svg,cx(gpx[2]),bot(Y0),matCx,Y1,"#90b8e8");
+  if(tree.gm_mat&&tree.mother)addPath(svg,cx(gpx[3]),bot(Y0),matCx,Y1,"#e898b8");
+  if(tree.father)addPath(svg,patCx,bot(Y1),rootCx,Y2,"#7ca8d8");
+  if(tree.mother)addPath(svg,matCx,bot(Y1),rootCx,Y2,"#d87898");
 
-  currentRootId = tree.root.id;
-  document.getElementById("crumb").textContent =
-    [tree.root.surname||tree.root.maiden, tree.root.given, tree.root.patronymic].filter(Boolean).join(" ");
-  const newHash = "#"+tree.root.id;
-  if (location.hash !== newHash) history.replaceState(null,"",newHash);
+  currentRootId=tree.root.id;
+  document.getElementById("crumb").textContent=
+    [tree.root.surname||tree.root.maiden,tree.root.given,tree.root.patronymic].filter(Boolean).join(" ");
+  const newHash="#"+tree.root.id;
+  if(location.hash!==newHash)history.replaceState(null,"",newHash);
 
   setTimeout(()=>{
-    const wrap = document.getElementById("canvas-wrap");
-    wrap.scrollLeft = rootCx - wrap.clientWidth/2;
-    wrap.scrollTop  = Y2 - Math.round(wrap.clientHeight/3);
-  }, 50);
+    const wrap=document.getElementById("canvas-wrap");
+    wrap.scrollLeft=rootCx-wrap.clientWidth/2;
+    wrap.scrollTop=Y2-Math.round(wrap.clientHeight/3);
+  },50);
 }
 
 // ── Detail panel ─────────────────────────────────────────────
