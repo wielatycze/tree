@@ -323,10 +323,17 @@ function renderTree(tree) {
   placeNode(tree.gf_mat, gpx[2], Y_GGP);
   placeNode(tree.gm_mat, gpx[3], Y_GGP);
 
-  // Parents are always placed at the midpoint of their grandparent slot pair,
-  // regardless of which grandparents are actually known. This keeps layout symmetric.
-  const patCx = (nodeCx(gpx[0]) + nodeCx(gpx[1])) / 2;
-  const matCx = (nodeCx(gpx[2]) + nodeCx(gpx[3])) / 2;
+  const patCx = tree.gf_pat && tree.gm_pat
+    ? (nodeCx(gpx[0]) + nodeCx(gpx[1])) / 2
+    : tree.gf_pat ? nodeCx(gpx[0])
+    : tree.gm_pat ? nodeCx(gpx[1])
+    : rootCx;
+
+  const matCx = tree.gf_mat && tree.gm_mat
+    ? (nodeCx(gpx[2]) + nodeCx(gpx[3])) / 2
+    : tree.gf_mat ? nodeCx(gpx[2])
+    : tree.gm_mat ? nodeCx(gpx[3])
+    : rootCx;
 
   // ── Parents ───────────────────────────────────────────────
   placeNode(tree.father, patCx - NODE_W / 2, Y_GP);
