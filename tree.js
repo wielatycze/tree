@@ -323,17 +323,10 @@ function renderTree(tree) {
   placeNode(tree.gf_mat, gpx[2], Y_GGP);
   placeNode(tree.gm_mat, gpx[3], Y_GGP);
 
-  const patCx = tree.gf_pat && tree.gm_pat
-    ? (nodeCx(gpx[0]) + nodeCx(gpx[1])) / 2  // midpoint of both
-    : tree.gf_pat ? nodeCx(gpx[0])             // only grandfather
-    : tree.gm_pat ? nodeCx(gpx[1])             // only grandmother
-    : rootCx;                                   // no grandparents — align with root
-
-  const matCx = tree.gf_mat && tree.gm_mat
-    ? (nodeCx(gpx[2]) + nodeCx(gpx[3])) / 2
-    : tree.gf_mat ? nodeCx(gpx[2])
-    : tree.gm_mat ? nodeCx(gpx[3])
-    : rootCx;
+  // Parents are always placed at the midpoint of their grandparent slot pair,
+  // regardless of which grandparents are actually known. This keeps layout symmetric.
+  const patCx = (nodeCx(gpx[0]) + nodeCx(gpx[1])) / 2;
+  const matCx = (nodeCx(gpx[2]) + nodeCx(gpx[3])) / 2;
 
   // ── Parents ───────────────────────────────────────────────
   placeNode(tree.father, patCx - NODE_W / 2, Y_GP);
@@ -414,10 +407,12 @@ function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
 
   // Connect one or two grandparents down to a parent node.
   function connectGPToParent(gpLeftCx, gpRightCx, parentCx, color) {
-    const both = gpLeftCx !== null && gpRightCx !== null;
+    const hasLeft  = gpLeftCx !== null;
+    const hasRight = gpRightCx !== null;
+    if (!hasLeft && !hasRight) return; // no grandparents, no line
 
-    if (both) {
-      // Two grandparents: stubs down, bar between them, drop from midpoint to parent
+    if (hasLeft && hasRight) {
+      // Both grandparents → stubs down, bar between, drop from bar midpoint
       drawLine(svg, gpLeftCx,  nodeBot(Y_GGP), gpLeftCx,  midGap01, '#90b8e8');
       drawLine(svg, gpRightCx, nodeBot(Y_GGP), gpRightCx, midGap01, '#e898b8');
       drawBar(svg, gpLeftCx, gpRightCx, midGap01, '#aaa');
@@ -425,10 +420,11 @@ function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
       if (barMid !== parentCx) drawLine(svg, barMid, midGap01, parentCx, midGap01, color);
       drawLine(svg, parentCx, midGap01, parentCx, Y_GP, color);
     } else {
-      // Single grandparent: parentCx === gpCx, straight vertical
-      const gpCx = gpLeftCx ?? gpRightCx;
-      if (gpCx === null) return;
-      drawLine(svg, gpCx, nodeBot(Y_GGP), gpCx, Y_GP, color);
+      // One grandparent → stub down to midGap01, then across to parentCx, then down
+      const gpCx = hasLeft ? gpLeftCx : gpRightCx;
+      drawLine(svg, gpCx, nodeBot(Y_GGP), gpCx, midGap01, color);
+      if (gpCx !== parentCx) drawLine(svg, gpCx, midGap01, parentCx, midGap01, color);
+      drawLine(svg, parentCx, midGap01, parentCx, Y_GP, color);
     }
     drawLine(svg, parentCx, nodeBot(Y_GP), parentCx, midGap12, color);
   }
@@ -439,6 +435,10 @@ function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
       tree.gm_pat ? nodeCx(gpx[1]) : null,
       patCx, '#7ca8d8'
     );
+    // Ensure stub from parent bottom to midGap12 even if no grandparents drew it
+    if (!tree.gf_pat && !tree.gm_pat) {
+      drawLine(svg, patCx, nodeBot(Y_GP), patCx, midGap12, '#7ca8d8');
+    }
   }
 
   if (tree.mother) {
@@ -447,6 +447,10 @@ function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
       tree.gm_mat ? nodeCx(gpx[3]) : null,
       matCx, '#d87898'
     );
+    // Ensure stub from parent bottom to midGap12 even if no grandparents drew it
+    if (!tree.gf_mat && !tree.gm_mat) {
+      drawLine(svg, matCx, nodeBot(Y_GP), matCx, midGap12, '#d87898');
+    }
   }
 
   // Parents → root
