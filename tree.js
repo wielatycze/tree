@@ -388,52 +388,70 @@ function renderTree(tree) {
  *   grandparent bottom → down → shared horizontal bar → up → parent top
  *   parent bottom → down → shared horizontal bar → up → root top
  */
+/**
+ * Draw all ancestor connectors using a horizontal-bar pattern:
+ *   grandparent bottom → down → shared horizontal bar → drop to parent top
+ *   parent bottom → down → shared horizontal bar → drop to root top
+ *
+ * When only one grandparent is known, the line goes straight through
+ * without a horizontal jog — just a vertical stub down, then across to
+ * the parent cx, then down to the parent node.
+ */
 function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
-  const midGap01 = nodeBot(Y_GGP) + Math.round(GAP_Y * 0.5);  // bar between great-gp and gp rows
-  const midGap12 = nodeBot(Y_GP)  + Math.round(GAP_Y * 0.5);  // bar between gp and parent rows
+  const midGap01 = nodeBot(Y_GGP) + Math.round(GAP_Y * 0.5);
+  const midGap12 = nodeBot(Y_GP)  + Math.round(GAP_Y * 0.5);
 
-  // Paternal grandparents → father
+  // Connect one or two grandparents down to a parent node.
+  function connectGPToParent(gpLeftCx, gpRightCx, parentCx, color) {
+    const both = gpLeftCx !== null && gpRightCx !== null;
+
+    if (both) {
+      // Two grandparents: stubs down, horizontal bar between them,
+      // then a single line from bar midpoint to parent.
+      drawLine(svg, gpLeftCx,  nodeBot(Y_GGP), gpLeftCx,  midGap01, '#90b8e8');
+      drawLine(svg, gpRightCx, nodeBot(Y_GGP), gpRightCx, midGap01, '#e898b8');
+      drawBar(svg, gpLeftCx, gpRightCx, midGap01, '#aaa');
+      const barMid = (gpLeftCx + gpRightCx) / 2;
+      drawLine(svg, barMid,   midGap01, parentCx, midGap01, color);
+      drawLine(svg, parentCx, midGap01, parentCx, Y_GP,     color);
+    } else {
+      // Single grandparent: straight stub down, then across to parent, then down.
+      const gpCx = gpLeftCx ?? gpRightCx;
+      if (gpCx === null) return;
+      drawLine(svg, gpCx,     nodeBot(Y_GGP), gpCx,     midGap01, color);
+      drawLine(svg, gpCx,     midGap01,       parentCx, midGap01, color);
+      drawLine(svg, parentCx, midGap01,       parentCx, Y_GP,     color);
+    }
+    // Stub from parent bottom to midGap12
+    drawLine(svg, parentCx, nodeBot(Y_GP), parentCx, midGap12, color);
+  }
+
   if (tree.father) {
-    const verts = [
-      tree.gf_pat && nodeCx(gpx[0]),
-      tree.gm_pat && nodeCx(gpx[1]),
-    ].filter(Boolean);
-    verts.forEach(x => drawLine(svg, x, nodeBot(Y_GGP), x, midGap01, '#90b8e8'));
-    if (verts.length === 2) drawBar(svg, verts[0], verts[1], midGap01, '#aaa');
-    const gpJunctionCx = verts.length === 2 ? (verts[0] + verts[1]) / 2 : verts[0];
-    if (gpJunctionCx) {
-      drawLine(svg, gpJunctionCx, midGap01, patCx, midGap01, '#7ca8d8');
-      drawLine(svg, patCx, midGap01, patCx, Y_GP,    '#7ca8d8');
-    }
-    drawLine(svg, patCx, nodeBot(Y_GP), patCx, midGap12, '#7ca8d8');
+    connectGPToParent(
+      tree.gf_pat ? nodeCx(gpx[0]) : null,
+      tree.gm_pat ? nodeCx(gpx[1]) : null,
+      patCx, '#7ca8d8'
+    );
   }
 
-  // Maternal grandparents → mother
   if (tree.mother) {
-    const verts = [
-      tree.gf_mat && nodeCx(gpx[2]),
-      tree.gm_mat && nodeCx(gpx[3]),
-    ].filter(Boolean);
-    verts.forEach(x => drawLine(svg, x, nodeBot(Y_GGP), x, midGap01, '#90b8e8'));
-    if (verts.length === 2) drawBar(svg, verts[0], verts[1], midGap01, '#aaa');
-    const gpJunctionCx = verts.length === 2 ? (verts[0] + verts[1]) / 2 : verts[0];
-    if (gpJunctionCx) {
-      drawLine(svg, gpJunctionCx, midGap01, matCx, midGap01, '#d87898');
-      drawLine(svg, matCx, midGap01, matCx, Y_GP,    '#d87898');
-    }
-    drawLine(svg, matCx, nodeBot(Y_GP), matCx, midGap12, '#d87898');
+    connectGPToParent(
+      tree.gf_mat ? nodeCx(gpx[2]) : null,
+      tree.gm_mat ? nodeCx(gpx[3]) : null,
+      matCx, '#d87898'
+    );
   }
 
-  // Father + mother → root
+  // Parents → root
   if (tree.father && tree.mother) {
     drawBar(svg, patCx, matCx, midGap12, '#aaa');
     drawLine(svg, rootCx, midGap12, rootCx, Y_PAR, '#999');
   } else if (tree.father) {
-    drawLine(svg, patCx, midGap12, rootCx, midGap12, '#7ca8d8');
-    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,   '#7ca8d8');
+    drawLine(svg, patCx,  midGap12, rootCx, midGap12, '#7ca8d8');
+    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,    '#7ca8d8');
   } else if (tree.mother) {
-    drawLine(svg, matCx, midGap12, rootCx, midGap12, '#d87898');
-    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,   '#d87898');
+    drawLine(svg, matCx,  midGap12, rootCx, midGap12, '#d87898');
+    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,    '#d87898');
   }
 }
 
