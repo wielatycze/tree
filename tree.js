@@ -107,6 +107,7 @@ function formatName(given, patronymic, surname, maiden) {
 }
 
 /** Build a person object from the data store */
+/** Build a person object from the data store */
 function buildPerson(id) {
   if (!id) return null;
   const r = SI.find(x => x[0] == id);
@@ -125,14 +126,70 @@ function buildPerson(id) {
   };
 }
 
-/** Build the 5-generation tree centred on rootId */
+/**
+ * Recursively build an ancestor subtree node.
+ * Each node: { person, father, mother } (father/mother are ancestor nodes or null).
+ */
+const MAX_ANCESTOR_GENERATIONS = 4;
+
+function buildAncestorNode(id, depth) {
+  if (!id || depth >= MAX_ANCESTOR_GENERATIONS) return null;
+  const person = buildPerson(id);
+  if (!person) return null;
+  const [fatherId, motherId] = PA[id] || [null, null];
+  return {
+    person,
+    father: buildAncestorNode(fatherId, depth + 1),
+    mother: buildAncestorNode(motherId, depth + 1),
+  };
+}
+
+/** Compute the minimum horizontal slot width needed for an ancestor subtree. */
+function slotWidth(node) {
+  if (!node) return 0;
+  const fw = slotWidth(node.father);
+  const mw = slotWidth(node.mother);
+  if (!fw && !mw) return NODE_W;
+  if (!fw) return Math.max(NODE_W, mw);
+  if (!mw) return Math.max(NODE_W, fw);
+  return Math.max(NODE_W, fw + GAP_X + mw);
+}
+
+/**
+ * Assign cx (horizontal centre) to every ancestor node, top-down.
+ * Returns flat array of { person, cx, depth } for all ancestors.
+ * depth=0 is the root, depth=1 is parents, etc.
+ */
+function assignAncestorPositions(node, cx, depth, results = []) {
+  if (!node) return results;
+  results.push({ person: node.person, cx, depth });
+  const fw = slotWidth(node.father);
+  const mw = slotWidth(node.mother);
+  if (node.father && node.mother) {
+    // Two parents: place symmetrically left (father) and right (mother)
+    const totalW = fw + GAP_X + mw;
+    assignAncestorPositions(node.father, cx - totalW/2 + fw/2,  depth + 1, results);
+    assignAncestorPositions(node.mother, cx + totalW/2 - mw/2, depth + 1, results);
+  } else if (node.father) {
+    // Single parent: directly above
+    assignAncestorPositions(node.father, cx, depth + 1, results);
+  } else if (node.mother) {
+    assignAncestorPositions(node.mother, cx, depth + 1, results);
+  }
+  return results;
+}
+
+/** Build the full tree data structure centred on rootId. */
 function buildTree(rootId) {
   const root = buildPerson(rootId);
   if (!root) return null;
 
   const [fatherId, motherId] = PA[rootId] || [null, null];
-  const [gfPatId,  gmPatId]  = fatherId ? PA[fatherId] || [null, null] : [null, null];
-  const [gfMatId,  gmMatId]  = motherId ? PA[motherId] || [null, null] : [null, null];
+  const ancestorTree = {
+    person: root,
+    father: buildAncestorNode(fatherId, 0),
+    mother: buildAncestorNode(motherId, 0),
+  };
 
   const families = (MA[rootId] || []).map(([spouseId, marriageDate, childIds]) => ({
     spouse:   buildPerson(spouseId),
@@ -140,26 +197,18 @@ function buildTree(rootId) {
     children: (childIds || []).map(buildPerson).filter(Boolean),
   }));
 
-  // Fall back: no marriage record but children exist (e.g. born out of wedlock)
   if (!families.length) {
     const ch = (CH[rootId] || []).map(buildPerson).filter(Boolean);
     if (ch.length) families.push({ spouse: null, date: null, children: ch });
   }
 
-  // Sort each family's children by birth year
   families.forEach(fam => {
     fam.children.sort((a, b) =>
       ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999)
     );
   });
 
-  return {
-    root,
-    father: buildPerson(fatherId), mother: buildPerson(motherId),
-    gf_pat: buildPerson(gfPatId),  gm_pat: buildPerson(gmPatId),
-    gf_mat: buildPerson(gfMatId),  gm_mat: buildPerson(gmMatId),
-    families,
-  };
+  return { ancestorTree, families };
 }
 
 // ── Layout helpers ───────────────────────────────────────────
@@ -192,29 +241,22 @@ function drawBar(svg, cx1, cx2, y, stroke) {
 
 function createNode(person, x, y, isRoot = false) {
   if (!person) return null;
-
   const name = formatName(person.given, person.patronymic, person.surname, person.maiden)
              || `Person #${person.id}`;
   const dates = (person.birth || person.death)
-    ? `${formatDate(person.birth)} — ${formatDate(person.death)}`
-    : '';
-
+    ? `${formatDate(person.birth)} — ${formatDate(person.death)}` : '';
   const div = document.createElement('div');
-  div.className = [
-    'node',
+  div.className = ['node',
     person.sex === 1 ? 'sex-m' : person.sex === 2 ? 'sex-f' : '',
-    isRoot ? 'is-root' : '',
-  ].filter(Boolean).join(' ');
+    isRoot ? 'is-root' : ''].filter(Boolean).join(' ');
   div.style.cssText = `left:${x}px;top:${y}px`;
   div.dataset.id = person.id;
-
-  div.innerHTML = `
-    <div class="node-name">${name}</div>
-    ${dates           ? `<div class="node-dates">${dates}</div>` : ''}
-    ${person.place    ? `<div class="node-place">${person.place}</div>` : ''}
-    ${person.num != null ? `<span class="node-num">#${person.num}</span>` : ''}
-  `.trim();
-
+  div.innerHTML = [
+    `<div class="node-name">${name}</div>`,
+    dates        ? `<div class="node-dates">${dates}</div>` : '',
+    person.place ? `<div class="node-place">${person.place}</div>` : '',
+    person.num != null ? `<span class="node-num">#${person.num}</span>` : '',
+  ].join('');
   div.addEventListener('click', () => showDetailPanel(person, div));
   return div;
 }
@@ -227,30 +269,31 @@ function renderTree(tree) {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
 
-  const { families } = tree;
+  const { ancestorTree, families } = tree;
 
-  // ── Spouse layout ──────────────────────────────────────────
-  // First family goes LEFT of root (if >1 family), rest go RIGHT.
-  // Each spouse is separated from the previous node by SP_GAP.
+  // ── Ancestor layout ───────────────────────────────────────
+  // Root sits at Y_ROOT. Ancestors go upward, one ROW_H per generation.
+  const Y_ROOT      = 24 + MAX_ANCESTOR_GENERATIONS * ROW_H;
+  const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
+  const BASE_DROP_Y = Y_ROOT + NODE_H + 36;
+
+  // ── Children/spouse layout ────────────────────────────────
+  const SP_GAP  = 32;
+  const FAM_GAP = 40;
+  const STAGGER = 22;
+  const MARGIN  = 20;
 
   const leftFams  = families.length > 1 ? [families[0]] : [];
   const rightFams = families.length > 1 ? families.slice(1) : families;
 
-  // Centre-offsets relative to rootCx (negative = left)
-  const leftSpouseOffsets  = leftFams.map((_, i)  => -(NODE_W/2 + SP_GAP + NODE_W/2 + i * (NODE_W + SP_GAP)));
-  const rightSpouseOffsets = rightFams.map((_, i) =>   NODE_W/2 + SP_GAP + NODE_W/2 + i * (NODE_W + SP_GAP));
+  const leftSpouseOffsets  = leftFams.map((_,i)  => -(NODE_W/2 + SP_GAP + NODE_W/2 + i*(NODE_W+SP_GAP)));
+  const rightSpouseOffsets = rightFams.map((_,i) =>   NODE_W/2 + SP_GAP + NODE_W/2 + i*(NODE_W+SP_GAP));
 
-  // Anchor = midpoint of root ↔ spouse hline (where child drop bar descends from)
   const orderedFams   = [...leftFams, ...rightFams];
   const anchorOffsets = [
-    ...leftSpouseOffsets.map(o  => o / 2),
+    ...leftSpouseOffsets.map(o => o / 2),
     ...rightSpouseOffsets.map(o => o / 2),
   ];
-
-  // ── Children layout ────────────────────────────────────────
-  // Each family gets a block wide enough for its children.
-  // Blocks are placed so each group's children are ideally centred under their anchor,
-  // clamped left-to-right to avoid overlaps.
 
   const groupWidths = orderedFams.map(fam =>
     fam.children.length > 0 ? fam.children.length * (NODE_W + GAP_X) - GAP_X : 0
@@ -258,219 +301,143 @@ function renderTree(tree) {
   const totalChildrenWidth = groupWidths.reduce((s, w) => s + w, 0)
     + Math.max(0, groupWidths.filter(w => w > 0).length - 1) * FAM_GAP;
 
-  // ── rootCx resolution ─────────────────────────────────────
-  // Must satisfy: grandparents centred, leftmost spouse on screen, children on screen.
-  const GP_W = 4 * (NODE_W + GAP_X) - GAP_X;  // total width of 4 grandparent slots
-  const rootCx = Math.max(
-    LABEL_W + GP_W / 2 + 10,                            // grandparents fit
-    leftSpouseOffsets.length
-      ? LABEL_W + 10 - (leftSpouseOffsets[leftSpouseOffsets.length - 1] - NODE_W / 2)
-      : 0,                                               // leftmost spouse on screen
-    totalChildrenWidth > 0 ? LABEL_W + 10 + totalChildrenWidth / 2 : 0,  // children on screen
-    LABEL_W + NODE_W,
+  // ── Resolve rootCx ────────────────────────────────────────
+  const leftSpouseNeeded = leftSpouseOffsets.length
+    ? -(leftSpouseOffsets[leftSpouseOffsets.length-1] - NODE_W/2) : 0;
+  const ancestorW = slotWidth(ancestorTree);
+
+  // rootCx must be large enough for: left spouses, children, ancestors
+  const rootCxRaw = Math.max(
+    MARGIN + leftSpouseNeeded,
+    MARGIN + totalChildrenWidth / 2,
+    MARGIN + ancestorW / 2,
   );
 
+  // Compute ancestor positions with tentative rootCx
+  const ancestorPositions = assignAncestorPositions(ancestorTree, rootCxRaw, 0);
+
+  // Check if any ancestor goes left of MARGIN, shift if needed
+  const minAncCx = ancestorPositions.reduce((m, p) => Math.min(m, p.cx), rootCxRaw);
+  const shift = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
+  const rootCx = rootCxRaw + shift;
+
+  // Re-run with corrected rootCx
+  const positions = assignAncestorPositions(ancestorTree, rootCx, 0);
+  const posMap = new Map(positions.map(p => [p.person.id, p]));
+
+  // ── Canvas size ───────────────────────────────────────────
+  const rightSpouseNeeded = rightSpouseOffsets.length
+    ? rightSpouseOffsets[rightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
+  const maxAncCx = positions.reduce((m, p) => Math.max(m, p.cx), rootCx);
+  const canvasW = Math.ceil(Math.max(
+    maxAncCx + NODE_W/2 + MARGIN,
+    rootCx + rightSpouseNeeded + MARGIN,
+    rootCx + totalChildrenWidth/2 + MARGIN,
+  ));
+  const canvasH = Y_ROOT + 3 * ROW_H + 60;
+
+  canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
+  const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
+  canvas.appendChild(svg);
+
+  function placeNode(person, cx, y, isRoot = false) {
+    const node = createNode(person, cx - NODE_W/2, y, isRoot);
+    if (node) canvas.appendChild(node);
+  }
+
+  // ── Place all ancestor nodes ──────────────────────────────
+  positions.forEach(({ person, cx, depth }) => {
+    const y = Y_ROOT - depth * ROW_H;
+    placeNode(person, cx, y, depth === 0);
+  });
+
+  // ── Draw ancestor connectors ──────────────────────────────
+  // For each non-root ancestor node, connect it to its children (= the node below)
+  // We iterate every node and look up its parents in posMap.
+  positions.forEach(({ person, cx, depth }) => {
+    const childY  = Y_ROOT - depth * ROW_H;          // top of this node's row
+    const parentY = Y_ROOT - (depth + 1) * ROW_H;    // top of parent row
+    const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
+
+    const [fid, mid] = PA[person.id] || [null, null];
+    const fpos = fid ? posMap.get(fid) : null;
+    const mpos = mid ? posMap.get(mid) : null;
+
+    if (!fpos && !mpos) return;
+
+    if (fpos && mpos) {
+      // Two parents: stubs down, bar, drop to child
+      drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
+      drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
+      drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
+      const barMid = (fpos.cx + mpos.cx) / 2;
+      if (Math.abs(barMid - cx) > 0.5) drawLine(svg, barMid, midY, cx, midY, '#999');
+      drawLine(svg, cx, midY, cx, childY, '#999');
+    } else {
+      // Single parent: straight line down
+      const parentCx = fpos ? fpos.cx : mpos.cx;
+      const color    = fpos ? '#7ca8d8' : '#d87898';
+      drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
+    }
+  });
+
+  // ── Spouses + marriage hlines ─────────────────────────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
   const anchorCxList  = anchorOffsets.map(o => rootCx + o);
+  const Y_CH = Y_ROOT + ROW_H;
 
-  // Place child groups: each ideally centred under anchor, no overlaps
+  leftFams.forEach((fam, i) => {
+    const scx    = leftSpouseCx[i];
+    const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
+    if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
+    drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+  });
+  rightFams.forEach((fam, i) => {
+    const scx    = rightSpouseCx[i];
+    const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
+    if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
+    drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+  });
+
+  // ── Child drop bars ───────────────────────────────────────
   const childGroups = [];
   let cursor = null;
   orderedFams.forEach((fam, fi) => {
     if (!groupWidths[fi]) return;
     const idealStart = anchorCxList[fi] - groupWidths[fi] / 2;
-    const start = cursor === null ? Math.max(LABEL_W + 10, idealStart) : Math.max(cursor, idealStart);
+    const start = cursor === null ? Math.max(MARGIN, idealStart) : Math.max(cursor, idealStart);
     childGroups.push({ fam, anchorCx: anchorCxList[fi], start, width: groupWidths[fi] });
     cursor = start + groupWidths[fi] + FAM_GAP;
   });
 
-  const rightmostSpouseCx = rightSpouseCx.length ? rightSpouseCx[rightSpouseCx.length - 1] + NODE_W / 2 : rootCx + NODE_W / 2;
-  const rightmostChildX   = childGroups.length   ? childGroups[childGroups.length - 1].start + childGroups[childGroups.length - 1].width : rootCx;
-
-  const canvasW = Math.max(rightmostChildX + 40, rightmostSpouseCx + 40, rootCx + GP_W / 2 + 40);
-  const canvasH = 5 * ROW_H + 100;
-
-  canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
-
-  const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
-  canvas.appendChild(svg);
-
-  const rootX = rootCx - NODE_W / 2;
-
-  // Generation labels
-  ['Great-grandparents', 'Grandparents', 'Parents', 'Children', 'Grandchildren'].forEach((label, i) => {
-    const span = document.createElement('span');
-    span.className = 'gen-label';
-    span.style.top = `${Y_GGP + i * ROW_H + 2}px`;
-    span.textContent = label;
-    canvas.appendChild(span);
-  });
-
-  function placeNode(person, x, y, isRoot = false) {
-    const node = createNode(person, x, y, isRoot);
-    if (node) canvas.appendChild(node);
-    return node;
-  }
-
-  // ── Grandparents (centred around rootCx) ──────────────────
-  const gpSlot = NODE_W + GAP_X;
-  const gpLeft = rootCx - GP_W / 2;
-  const gpx    = [gpLeft, gpLeft + gpSlot, gpLeft + 2 * gpSlot, gpLeft + 3 * gpSlot];
-
-  placeNode(tree.gf_pat, gpx[0], Y_GGP);
-  placeNode(tree.gm_pat, gpx[1], Y_GGP);
-  placeNode(tree.gf_mat, gpx[2], Y_GGP);
-  placeNode(tree.gm_mat, gpx[3], Y_GGP);
-
-  const patCx = tree.gf_pat && tree.gm_pat
-    ? (nodeCx(gpx[0]) + nodeCx(gpx[1])) / 2
-    : tree.gf_pat ? nodeCx(gpx[0])
-    : tree.gm_pat ? nodeCx(gpx[1])
-    : rootCx;
-
-  const matCx = tree.gf_mat && tree.gm_mat
-    ? (nodeCx(gpx[2]) + nodeCx(gpx[3])) / 2
-    : tree.gf_mat ? nodeCx(gpx[2])
-    : tree.gm_mat ? nodeCx(gpx[3])
-    : rootCx;
-
-  // ── Parents ───────────────────────────────────────────────
-  placeNode(tree.father, patCx - NODE_W / 2, Y_GP);
-  placeNode(tree.mother, matCx - NODE_W / 2, Y_GP);
-
-  // ── Root ──────────────────────────────────────────────────
-  placeNode(tree.root, rootX, Y_PAR, true);
-
-  // ── Spouses + marriage hlines ─────────────────────────────
-  leftFams.forEach((fam, i) => {
-    const scx = leftSpouseCx[i];
-    if (fam.spouse) placeNode(fam.spouse, scx - NODE_W / 2, Y_PAR);
-    const fromCx = i === 0 ? rootCx : leftSpouseCx[i - 1];
-    drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
-  });
-  rightFams.forEach((fam, i) => {
-    const scx = rightSpouseCx[i];
-    if (fam.spouse) placeNode(fam.spouse, scx - NODE_W / 2, Y_PAR);
-    const fromCx = i === 0 ? rootCx : rightSpouseCx[i - 1];
-    drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
-  });
-
-  // ── Children drop bars (staggered so they don't cross) ────
   childGroups.forEach((g, gi) => {
-    // Family 0 = lowest bar; each subsequent family = STAGGER px higher
     const dropY     = BASE_DROP_Y - gi * STAGGER;
     const firstChCx = nodeCx(g.start);
-    const lastChCx  = nodeCx(g.start + (g.fam.children.length - 1) * (NODE_W + GAP_X));
-
-    // Vertical stub from hline to drop bar
+    const lastChCx  = nodeCx(g.start + (g.fam.children.length-1) * (NODE_W+GAP_X));
     drawLine(svg, g.anchorCx, HLINE_Y, g.anchorCx, dropY, '#7bc8a8');
-    // Horizontal bar spanning anchor and all children
     drawBar(svg, Math.min(g.anchorCx, firstChCx), Math.max(g.anchorCx, lastChCx), dropY, '#7bc8a8');
-
     g.fam.children.forEach((child, ci) => {
       const x = g.start + ci * (NODE_W + GAP_X);
-      placeNode(child, x, Y_CH);
+      placeNode(child, nodeCx(x), Y_CH);
       drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
     });
   });
 
-  // ── Ancestor connectors ───────────────────────────────────
-  drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx);
-
   // ── Update state ──────────────────────────────────────────
-  currentRootId = tree.root.id;
+  currentRootId = ancestorTree.person.id;
   document.getElementById('crumb').textContent =
-    formatName(tree.root.given, tree.root.patronymic, tree.root.surname, tree.root.maiden);
+    formatName(ancestorTree.person.given, ancestorTree.person.patronymic,
+               ancestorTree.person.surname, ancestorTree.person.maiden);
 
-  const newHash = `#${tree.root.id}`;
+  const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
-  // Scroll root into centre of viewport
   setTimeout(() => {
     const wrap = document.getElementById('canvas-wrap');
     wrap.scrollLeft = rootCx - wrap.clientWidth / 2;
-    wrap.scrollTop  = Y_PAR - Math.round(wrap.clientHeight / 3);
+    wrap.scrollTop  = Y_ROOT - Math.round(wrap.clientHeight / 3);
   }, 50);
-}
-
-/**
- * Draw all ancestor connectors using a horizontal-bar pattern:
- *   grandparent bottom → down → shared horizontal bar → up → parent top
- *   parent bottom → down → shared horizontal bar → up → root top
- */
-/**
- * Draw all ancestor connectors using a horizontal-bar pattern:
- *   grandparent bottom → down → shared horizontal bar → drop to parent top
- *   parent bottom → down → shared horizontal bar → drop to root top
- *
- * When only one grandparent is known, the line goes straight through
- * without a horizontal jog — just a vertical stub down, then across to
- * the parent cx, then down to the parent node.
- */
-function drawAncestorConnectors(svg, tree, gpx, patCx, matCx, rootCx) {
-  const midGap01 = nodeBot(Y_GGP) + Math.round(GAP_Y * 0.5);
-  const midGap12 = nodeBot(Y_GP)  + Math.round(GAP_Y * 0.5);
-
-  // Connect one or two grandparents down to a parent node.
-  function connectGPToParent(gpLeftCx, gpRightCx, parentCx, color) {
-    const hasLeft  = gpLeftCx !== null;
-    const hasRight = gpRightCx !== null;
-    if (!hasLeft && !hasRight) return; // no grandparents, no line
-
-    if (hasLeft && hasRight) {
-      // Both grandparents → stubs down, bar between, drop from bar midpoint
-      drawLine(svg, gpLeftCx,  nodeBot(Y_GGP), gpLeftCx,  midGap01, '#90b8e8');
-      drawLine(svg, gpRightCx, nodeBot(Y_GGP), gpRightCx, midGap01, '#e898b8');
-      drawBar(svg, gpLeftCx, gpRightCx, midGap01, '#aaa');
-      const barMid = (gpLeftCx + gpRightCx) / 2;
-      if (barMid !== parentCx) drawLine(svg, barMid, midGap01, parentCx, midGap01, color);
-      drawLine(svg, parentCx, midGap01, parentCx, Y_GP, color);
-    } else {
-      // One grandparent → stub down to midGap01, then across to parentCx, then down
-      const gpCx = hasLeft ? gpLeftCx : gpRightCx;
-      drawLine(svg, gpCx, nodeBot(Y_GGP), gpCx, midGap01, color);
-      if (gpCx !== parentCx) drawLine(svg, gpCx, midGap01, parentCx, midGap01, color);
-      drawLine(svg, parentCx, midGap01, parentCx, Y_GP, color);
-    }
-    drawLine(svg, parentCx, nodeBot(Y_GP), parentCx, midGap12, color);
-  }
-
-  if (tree.father) {
-    connectGPToParent(
-      tree.gf_pat ? nodeCx(gpx[0]) : null,
-      tree.gm_pat ? nodeCx(gpx[1]) : null,
-      patCx, '#7ca8d8'
-    );
-    // Ensure stub from parent bottom to midGap12 even if no grandparents drew it
-    if (!tree.gf_pat && !tree.gm_pat) {
-      drawLine(svg, patCx, nodeBot(Y_GP), patCx, midGap12, '#7ca8d8');
-    }
-  }
-
-  if (tree.mother) {
-    connectGPToParent(
-      tree.gf_mat ? nodeCx(gpx[2]) : null,
-      tree.gm_mat ? nodeCx(gpx[3]) : null,
-      matCx, '#d87898'
-    );
-    // Ensure stub from parent bottom to midGap12 even if no grandparents drew it
-    if (!tree.gf_mat && !tree.gm_mat) {
-      drawLine(svg, matCx, nodeBot(Y_GP), matCx, midGap12, '#d87898');
-    }
-  }
-
-  // Parents → root
-  if (tree.father && tree.mother) {
-    drawBar(svg, patCx, matCx, midGap12, '#aaa');
-    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR, '#999');
-  } else if (tree.father) {
-    drawLine(svg, patCx,  midGap12, rootCx, midGap12, '#7ca8d8');
-    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,    '#7ca8d8');
-  } else if (tree.mother) {
-    drawLine(svg, matCx,  midGap12, rootCx, midGap12, '#d87898');
-    drawLine(svg, rootCx, midGap12, rootCx, Y_PAR,    '#d87898');
-  }
 }
 
 // ── Detail panel ─────────────────────────────────────────────
