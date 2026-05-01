@@ -439,19 +439,25 @@ function renderTree(tree) {
   const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
-  // Scroll to centre the root. Use setTimeout to let flex layout resolve.
-  // Fall back to window dimensions if wrap hasn't sized yet.
-  const _rootCx = rootCx, _Y_ROOT = Y_ROOT;
-  function centreView() {
+  // Centre root in viewport.
+  // Pad the canvas so root is visually centred even when tree is small.
+  {
+    const toolbar = document.getElementById('toolbar');
+    const vw = window.innerWidth;
+    const vh = window.innerHeight - (toolbar ? toolbar.offsetHeight : 48);
+    // Desired position of root on screen
+    const targetX = Math.round(vw / 2);     // root horizontally centred
+    const targetY = Math.round(vh / 3);     // root 1/3 from top
+    // Pad canvas so root ends up at target when scroll=0
+    const padLeft = Math.max(0, targetX - rootCx);
+    const padTop  = Math.max(0, targetY - Y_ROOT);
+    const canvas  = document.getElementById('canvas');
+    canvas.style.cssText += `;margin-left:${padLeft}px;margin-top:${padTop}px`;
+    // Scroll for when tree is larger than viewport
     const wrap = document.getElementById('canvas-wrap');
-    const vw = wrap.clientWidth  || (window.innerWidth);
-    const vh = wrap.clientHeight || (window.innerHeight - 48);
-    wrap.scrollLeft = Math.max(0, _rootCx - Math.round(vw / 2));
-    wrap.scrollTop  = Math.max(0, _Y_ROOT - Math.round(vh / 3));
+    wrap.scrollLeft = Math.max(0, rootCx + padLeft - targetX);
+    wrap.scrollTop  = Math.max(0, Y_ROOT + padTop  - targetY);
   }
-  setTimeout(centreView, 0);
-  // Second call in case first fires before flex resolves
-  setTimeout(centreView, 100);
 }
 
 // ── Detail panel ─────────────────────────────────────────────
