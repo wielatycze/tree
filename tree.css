@@ -102,6 +102,27 @@ body {
 }
 .btn:hover { background: #f5f4f0; }
 
+/* ── Mode toggle ──────────────────────────────────────────── */
+.mode-toggle {
+  display: flex;
+  border: 1px solid #d0cdc8;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #fff;
+  color: #666;
+  border: none;
+  border-right: 1px solid #d0cdc8;
+}
+.mode-btn:last-child { border-right: none; }
+.mode-btn:hover { background: #f5f4f0; color: #333; }
+.mode-btn-active { background: #f0f5ff; color: #4a7fc1; font-weight: 600; }
+
 /* ── Search ───────────────────────────────────────────────── */
 #search-wrap {
   position: relative;

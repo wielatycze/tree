@@ -47,6 +47,7 @@ let BI; // births:       {person_id: [y, m, d]}
 let DE; // deaths:       {person_id: [y, m, d]}
 
 let currentRootId = null;
+let currentMode   = 'ancestors'; // 'ancestors' | 'descendants'
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
@@ -208,7 +209,14 @@ function buildTree(rootId) {
     );
   });
 
-  return { ancestorTree, families };
+  return { ancestorTree, families, descendantTree: null }; // descendantTree built on demand
+}
+
+/** Attach descendant tree to an already-built tree object */
+function attachDescendants(tree) {
+  if (!tree.descendantTree) {
+    tree.descendantTree = buildDescendantNode(tree.ancestorTree.person.id, 0);
+  }
 }
 
 // ── Layout helpers ───────────────────────────────────────────
@@ -270,19 +278,19 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   const { ancestorTree, families } = tree;
+  const descMode = currentMode === 'descendants';
 
-  // ── Ancestor layout ───────────────────────────────────────
-  // Root sits at Y_ROOT. Y_ROOT is based on actual ancestor depth, not max.
+  // ── Ancestor depth & Y_ROOT ───────────────────────────────
   const actualDepth = (function maxDepth(node) {
     if (!node) return 0;
     return 1 + Math.max(maxDepth(node.father), maxDepth(node.mother));
-  })(ancestorTree) - 1; // subtract 1 because root itself is depth 0
+  })(ancestorTree) - 1;
 
   const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
   const BASE_DROP_Y = Y_ROOT + NODE_H + 36;
 
-  // ── Children/spouse layout ────────────────────────────────
+  // ── Spouse layout offsets ─────────────────────────────────
   const SP_GAP  = 32;
   const FAM_GAP = 40;
   const STAGGER = 22;
@@ -300,47 +308,69 @@ function renderTree(tree) {
     ...rightSpouseOffsets.map(o => o / 2),
   ];
 
+  // ── Children width (ancestors mode) vs descendant width ───
+  // In descendants mode, child spacing is driven by subtree widths.
+  // We still need the descendant tree for width calculation.
+  if (descMode) attachDescendants(tree);
+  const descNode = descMode ? tree.descendantTree : null;
+
+  // Width below root:
+  //   ancestors mode  → fixed-width children groups
+  //   descendants mode → recursive subtree width
   const groupWidths = orderedFams.map(fam =>
     fam.children.length > 0 ? fam.children.length * (NODE_W + GAP_X) - GAP_X : 0
   );
-  const totalChildrenWidth = groupWidths.reduce((s, w) => s + w, 0)
+  const totalChildrenWidthAnc = groupWidths.reduce((s, w) => s + w, 0)
     + Math.max(0, groupWidths.filter(w => w > 0).length - 1) * FAM_GAP;
+
+  const belowWidth = descMode && descNode
+    ? descSubtreeWidth(descNode)
+    : totalChildrenWidthAnc;
 
   // ── Resolve rootCx ────────────────────────────────────────
   const leftSpouseNeeded = leftSpouseOffsets.length
     ? -(leftSpouseOffsets[leftSpouseOffsets.length-1] - NODE_W/2) : 0;
   const ancestorW = slotWidth(ancestorTree);
 
-  // rootCx must be large enough for: left spouses, children, ancestors
   const rootCxRaw = Math.max(
     MARGIN + leftSpouseNeeded,
-    MARGIN + totalChildrenWidth / 2,
+    MARGIN + belowWidth / 2,
     MARGIN + ancestorW / 2,
   );
 
-  // Compute ancestor positions with tentative rootCx
   const ancestorPositions = assignAncestorPositions(ancestorTree, rootCxRaw, 0);
-
-  // Check if any ancestor goes left of MARGIN, shift if needed
   const minAncCx = ancestorPositions.reduce((m, p) => Math.min(m, p.cx), rootCxRaw);
-  const shift = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
-  const rootCx = rootCxRaw + shift;
+  const shift    = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
+  const rootCx   = rootCxRaw + shift;
 
-  // Re-run with corrected rootCx
   const positions = assignAncestorPositions(ancestorTree, rootCx, 0);
-  const posMap = new Map(positions.map(p => [p.person.id, p]));
+  const posMap    = new Map(positions.map(p => [p.person.id, p]));
 
   // ── Canvas size ───────────────────────────────────────────
   const rightSpouseNeeded = rightSpouseOffsets.length
     ? rightSpouseOffsets[rightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
   const maxAncCx = positions.reduce((m, p) => Math.max(m, p.cx), rootCx);
+
+  // Descendant tree max extent
+  let descMaxCx = rootCx, descMaxDepth = 0;
+  if (descMode && descNode) {
+    const dpos = assignDescendantPositions(descNode, rootCx, 0);
+    dpos.forEach(({ cx, depth }) => {
+      descMaxCx   = Math.max(descMaxCx, cx);
+      descMaxDepth = Math.max(descMaxDepth, depth);
+    });
+  }
+
+  const hasAncChildren = orderedFams.some(f => f.children.length > 0);
   const canvasW = Math.ceil(Math.max(
     maxAncCx + NODE_W/2 + MARGIN,
+    descMaxCx + NODE_W/2 + MARGIN,
     rootCx + rightSpouseNeeded + MARGIN,
-    rootCx + totalChildrenWidth/2 + MARGIN,
+    rootCx + belowWidth/2 + MARGIN,
   ));
-  const hasChildren = orderedFams.some(f => f.children.length > 0);
-  const canvasH = Y_ROOT + (hasChildren ? 2 : 1) * ROW_H + 40;
+  const canvasH = Y_ROOT
+    + (descMode ? (descMaxDepth + 1) * ROW_H : (hasAncChildren ? 2 : 1) * ROW_H)
+    + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
   const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
@@ -351,28 +381,21 @@ function renderTree(tree) {
     if (node) canvas.appendChild(node);
   }
 
-  // ── Place all ancestor nodes ──────────────────────────────
+  // ── Place ancestor nodes ──────────────────────────────────
   positions.forEach(({ person, cx, depth }) => {
-    const y = Y_ROOT - depth * ROW_H;
-    placeNode(person, cx, y, depth === 0);
+    placeNode(person, cx, Y_ROOT - depth * ROW_H, depth === 0);
   });
 
-  // ── Draw ancestor connectors ──────────────────────────────
-  // For each non-root ancestor node, connect it to its children (= the node below)
-  // We iterate every node and look up its parents in posMap.
+  // ── Ancestor connectors ───────────────────────────────────
   positions.forEach(({ person, cx, depth }) => {
-    const childY  = Y_ROOT - depth * ROW_H;          // top of this node's row
-    const parentY = Y_ROOT - (depth + 1) * ROW_H;    // top of parent row
+    const childY  = Y_ROOT - depth * ROW_H;
+    const parentY = Y_ROOT - (depth + 1) * ROW_H;
     const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
-
     const [fid, mid] = PA[person.id] || [null, null];
     const fpos = fid ? posMap.get(fid) : null;
     const mpos = mid ? posMap.get(mid) : null;
-
     if (!fpos && !mpos) return;
-
     if (fpos && mpos) {
-      // Two parents: stubs down, bar, drop to child
       drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
       drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
       drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
@@ -380,18 +403,16 @@ function renderTree(tree) {
       if (Math.abs(barMid - cx) > 0.5) drawLine(svg, barMid, midY, cx, midY, '#999');
       drawLine(svg, cx, midY, cx, childY, '#999');
     } else {
-      // Single parent: straight line down
       const parentCx = fpos ? fpos.cx : mpos.cx;
       const color    = fpos ? '#7ca8d8' : '#d87898';
       drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
     }
   });
 
-  // ── Spouses + marriage hlines ─────────────────────────────
+  // ── Spouses + marriage hlines (same in both modes) ────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
   const anchorCxList  = anchorOffsets.map(o => rootCx + o);
-  const Y_CH = Y_ROOT + ROW_H;
 
   leftFams.forEach((fam, i) => {
     const scx    = leftSpouseCx[i];
@@ -406,29 +427,36 @@ function renderTree(tree) {
     drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
   });
 
-  // ── Child drop bars ───────────────────────────────────────
-  const childGroups = [];
-  let cursor = null;
-  orderedFams.forEach((fam, fi) => {
-    if (!groupWidths[fi]) return;
-    const idealStart = anchorCxList[fi] - groupWidths[fi] / 2;
-    const start = cursor === null ? Math.max(MARGIN, idealStart) : Math.max(cursor, idealStart);
-    childGroups.push({ fam, anchorCx: anchorCxList[fi], start, width: groupWidths[fi] });
-    cursor = start + groupWidths[fi] + FAM_GAP;
-  });
-
-  childGroups.forEach((g, gi) => {
-    const dropY     = BASE_DROP_Y - gi * STAGGER;
-    const firstChCx = nodeCx(g.start);
-    const lastChCx  = nodeCx(g.start + (g.fam.children.length-1) * (NODE_W+GAP_X));
-    drawLine(svg, g.anchorCx, HLINE_Y, g.anchorCx, dropY, '#7bc8a8');
-    drawBar(svg, Math.min(g.anchorCx, firstChCx), Math.max(g.anchorCx, lastChCx), dropY, '#7bc8a8');
-    g.fam.children.forEach((child, ci) => {
-      const x = g.start + ci * (NODE_W + GAP_X);
-      placeNode(child, nodeCx(x), Y_CH);
-      drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
+  // ── Below root: ancestors mode = flat children ────────────
+  if (!descMode) {
+    const childGroups = [];
+    let cursor = null;
+    orderedFams.forEach((fam, fi) => {
+      if (!groupWidths[fi]) return;
+      const idealStart = anchorCxList[fi] - groupWidths[fi] / 2;
+      const start = cursor === null ? Math.max(MARGIN, idealStart) : Math.max(cursor, idealStart);
+      childGroups.push({ fam, anchorCx: anchorCxList[fi], start, width: groupWidths[fi] });
+      cursor = start + groupWidths[fi] + FAM_GAP;
     });
-  });
+
+    const Y_CH = Y_ROOT + ROW_H;
+    childGroups.forEach((g, gi) => {
+      const dropY     = BASE_DROP_Y - gi * STAGGER;
+      const firstChCx = nodeCx(g.start);
+      const lastChCx  = nodeCx(g.start + (g.fam.children.length-1) * (NODE_W+GAP_X));
+      drawLine(svg, g.anchorCx, HLINE_Y, g.anchorCx, dropY, '#7bc8a8');
+      drawBar(svg, Math.min(g.anchorCx, firstChCx), Math.max(g.anchorCx, lastChCx), dropY, '#7bc8a8');
+      g.fam.children.forEach((child, ci) => {
+        const x = g.start + ci * (NODE_W + GAP_X);
+        placeNode(child, nodeCx(x), Y_CH);
+        drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
+      });
+    });
+
+  // ── Below root: descendants mode = recursive subtree ──────
+  } else if (descNode) {
+    renderDescendants(svg, canvas, descNode, rootCx, Y_ROOT);
+  }
 
   // ── Update state ──────────────────────────────────────────
   currentRootId = ancestorTree.person.id;
@@ -439,21 +467,16 @@ function renderTree(tree) {
   const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
-  // Centre root in viewport.
-  // Pad the canvas so root is visually centred even when tree is small.
+  // Centre root in viewport
   {
     const toolbar = document.getElementById('toolbar');
     const vw = window.innerWidth;
     const vh = window.innerHeight - (toolbar ? toolbar.offsetHeight : 48);
-    // Desired position of root on screen
-    const targetX = Math.round(vw / 2);     // root horizontally centred
-    const targetY = Math.round(vh / 3);     // root 1/3 from top
-    // Pad canvas so root ends up at target when scroll=0
+    const targetX = Math.round(vw / 2);
+    const targetY = Math.round(vh / 3);
     const padLeft = Math.max(0, targetX - rootCx);
     const padTop  = Math.max(0, targetY - Y_ROOT);
-    const canvas  = document.getElementById('canvas');
     canvas.style.cssText += `;margin-left:${padLeft}px;margin-top:${padTop}px`;
-    // Scroll for when tree is larger than viewport
     const wrap = document.getElementById('canvas-wrap');
     wrap.scrollLeft = Math.max(0, rootCx + padLeft - targetX);
     wrap.scrollTop  = Math.max(0, Y_ROOT + padTop  - targetY);
@@ -497,8 +520,21 @@ function navigate(id) {
   renderTree(buildTree(id));
 }
 
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('mode-btn-active', b.dataset.mode === mode);
+  });
+  if (currentRootId) renderTree(buildTree(currentRootId));
+}
+
 function initUI() {
   document.getElementById('btn-home').addEventListener('click', () => navigate(CONFIG.homeId));
+
+  // Mode buttons
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
 
   document.getElementById('detail-close').addEventListener('click', () => {
     document.getElementById('detail-panel').style.display = 'none';
@@ -582,4 +618,191 @@ function initSearch() {
       results.style.display = 'none';
     }
   });
+}
+
+// ── Descendant tree ──────────────────────────────────────────
+
+const MAX_DESC_GENERATIONS = 6;
+
+/**
+ * Build a descendant node recursively.
+ * Each node: { person, families: [{ spouse, children: [descNode] }] }
+ */
+function buildDescendantNode(id, depth) {
+  if (!id || depth >= MAX_DESC_GENERATIONS) return null;
+  const person = buildPerson(id);
+  if (!person) return null;
+
+  const rawFamilies = MA[id] || [];
+  const families = rawFamilies.map(([spouseId, date, childIds]) => ({
+    spouse:   buildPerson(spouseId),
+    date,
+    children: (childIds || [])
+      .map(cid => buildDescendantNode(cid, depth + 1))
+      .filter(Boolean)
+      .sort((a, b) =>
+        ((a.person.birth && a.person.birth[0]) || 9999) -
+        ((b.person.birth && b.person.birth[0]) || 9999)
+      ),
+  }));
+
+  // Fallback: children via CH map if no marriage records
+  if (!families.length) {
+    const ch = (CH[id] || [])
+      .map(cid => buildDescendantNode(cid, depth + 1))
+      .filter(Boolean);
+    if (ch.length) families.push({ spouse: null, date: null, children: ch });
+  }
+
+  return { person, families };
+}
+
+/**
+ * Compute the minimum horizontal width needed to display a descendant subtree.
+ * For each family:
+ *   familyW = spouseW (if spouse) + SP_GAP (if spouse) + childrenSpread
+ *   childrenSpread = sum of each child's subtree width + GAP_X between them
+ * Node itself needs at least NODE_W.
+ * Total = max(NODE_W, sum of all family widths + FAM_GAP between families)
+ */
+function descSubtreeWidth(node) {
+  if (!node) return 0;
+  const SP_GAP = 32, FAM_GAP = 40;
+
+  const famWidths = node.families.map(fam => {
+    const spW = fam.spouse ? NODE_W + SP_GAP : 0;
+    const chSpread = fam.children.length
+      ? fam.children.reduce((s, c) => s + descSubtreeWidth(c), 0)
+        + (fam.children.length - 1) * GAP_X
+      : 0;
+    return Math.max(spW, chSpread, NODE_W);
+  });
+
+  if (!famWidths.length) return NODE_W;
+  const total = famWidths.reduce((s, w) => s + w, 0)
+    + (famWidths.length - 1) * FAM_GAP;
+  return Math.max(NODE_W, total);
+}
+
+/**
+ * Assign positions to all nodes in a descendant subtree.
+ * cx = horizontal centre of the slot allocated to this node.
+ * Returns flat array of { node, cx, depth, famIdx, anchorCx } for rendering.
+ */
+function assignDescendantPositions(node, cx, depth, results = []) {
+  if (!node) return results;
+  const SP_GAP = 32, FAM_GAP = 40;
+
+  results.push({ node, cx, depth });
+
+  if (!node.families.length) return results;
+
+  // Compute family slot widths
+  const famWidths = node.families.map(fam => {
+    const spW = fam.spouse ? NODE_W + SP_GAP : 0;
+    const chSpread = fam.children.length
+      ? fam.children.reduce((s, c) => s + descSubtreeWidth(c), 0)
+        + (fam.children.length - 1) * GAP_X
+      : 0;
+    return Math.max(spW, chSpread, NODE_W);
+  });
+
+  const totalW = famWidths.reduce((s, w) => s + w, 0)
+    + (famWidths.length - 1) * FAM_GAP;
+
+  // Place families left-to-right centred under cx
+  let famLeft = cx - totalW / 2;
+
+  node.families.forEach((fam, fi) => {
+    const fw = famWidths[fi];
+    const famCx = famLeft + fw / 2;
+
+    // Spouse goes to the right of famCx
+    const spouseCx = fam.spouse ? famCx + NODE_W / 2 + SP_GAP / 2 + NODE_W / 2 : null;
+    // Anchor = midpoint of node cx and spouse cx (where children drop from)
+    const anchorCx = spouseCx !== null ? (cx + spouseCx) / 2 : cx;
+
+    // Store spouse info on the family for rendering
+    fam._spouseCx  = spouseCx;
+    fam._anchorCx  = anchorCx;
+    fam._famCx     = famCx;
+
+    // Place children left-to-right within their share of the slot
+    if (fam.children.length) {
+      const childWidths = fam.children.map(c => descSubtreeWidth(c));
+      const chTotal = childWidths.reduce((s, w) => s + w, 0)
+        + (fam.children.length - 1) * GAP_X;
+      let chLeft = anchorCx - chTotal / 2;
+
+      fam.children.forEach((child, ci) => {
+        const cw = childWidths[ci];
+        const childCx = chLeft + cw / 2;
+        assignDescendantPositions(child, childCx, depth + 1, results);
+        chLeft += cw + GAP_X;
+      });
+    }
+
+    famLeft += fw + FAM_GAP;
+  });
+
+  return results;
+}
+
+/**
+ * Render a descendant subtree onto canvas/svg.
+ * rootCx = cx of the root (selected) person.
+ * startY = Y of the root person row.
+ */
+function renderDescendants(svg, canvas, rootDescNode, rootCx, startY) {
+  const SP_GAP = 32, FAM_GAP = 40, STAGGER = 22;
+  const HLINE_Y_OFFSET = Math.round(NODE_H / 2);
+  const DROP_OFFSET    = NODE_H + 36;
+
+  const positions = assignDescendantPositions(rootDescNode, rootCx, 0);
+
+  // Build map id -> cx for connector drawing
+  const cxMap = new Map(positions.map(({ node, cx }) => [node.person.id, cx]));
+
+  positions.forEach(({ node, cx, depth }) => {
+    const y = startY + depth * ROW_H;
+    const HLINE_Y  = y + HLINE_Y_OFFSET;
+    const BASE_DROP = y + DROP_OFFSET;
+
+    // Place spouse nodes and draw hlines
+    let prevCx = cx;
+    node.families.forEach((fam, fi) => {
+      if (fam.spouse && fam._spouseCx != null) {
+        createAndAppend(fam.spouse, fam._spouseCx, y, canvas);
+        drawLine(svg, prevCx, HLINE_Y, fam._spouseCx, HLINE_Y, '#bbb', true);
+        prevCx = fam._spouseCx;
+      }
+
+      if (fam.children.length) {
+        const anc = fam._anchorCx;
+        const dropY = BASE_DROP - fi * STAGGER;
+        const childCxs = fam.children.map(c => cxMap.get(c.person.id)).filter(x => x != null);
+        if (!childCxs.length) return;
+        const firstCx = childCxs[0];
+        const lastCx  = childCxs[childCxs.length - 1];
+
+        drawLine(svg, anc, HLINE_Y, anc, dropY, '#7bc8a8');
+        drawBar(svg, Math.min(anc, firstCx), Math.max(anc, lastCx), dropY, '#7bc8a8');
+        childCxs.forEach(chcx => {
+          drawLine(svg, chcx, dropY, chcx, y + ROW_H, '#7bc8a8');
+        });
+      }
+    });
+  });
+
+  // Place all person nodes (except root — already placed by renderTree)
+  positions.forEach(({ node, cx, depth }) => {
+    if (depth === 0) return; // root already rendered
+    const y = startY + depth * ROW_H;
+    createAndAppend(node.person, cx, y, canvas);
+  });
+}
+
+function createAndAppend(person, cx, y, canvas) {
+  const node = createNode(person, cx - NODE_W / 2, y);
+  if (node) canvas.appendChild(node);
 }
