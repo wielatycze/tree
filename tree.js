@@ -339,8 +339,7 @@ function renderTree(tree) {
     rootCx + rightSpouseNeeded + MARGIN,
     rootCx + totalChildrenWidth/2 + MARGIN,
   ));
-  // Canvas height: from top of oldest ancestor to bottom of children row + padding
-  const hasChildren = childGroups.length > 0;
+  const hasChildren = orderedFams.some(f => f.children.length > 0);
   const canvasH = Y_ROOT + (hasChildren ? 2 : 1) * ROW_H + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
