@@ -439,12 +439,19 @@ function renderTree(tree) {
   const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
-  // Use rAF to ensure layout is complete before reading clientWidth
-  requestAnimationFrame(() => {
+  // Scroll to centre the root. Use setTimeout to let flex layout resolve.
+  // Fall back to window dimensions if wrap hasn't sized yet.
+  const _rootCx = rootCx, _Y_ROOT = Y_ROOT;
+  function centreView() {
     const wrap = document.getElementById('canvas-wrap');
-    wrap.scrollLeft = Math.max(0, rootCx - Math.round(wrap.clientWidth / 2));
-    wrap.scrollTop  = Math.max(0, Y_ROOT - Math.round(wrap.clientHeight / 3));
-  });
+    const vw = wrap.clientWidth  || (window.innerWidth);
+    const vh = wrap.clientHeight || (window.innerHeight - 48);
+    wrap.scrollLeft = Math.max(0, _rootCx - Math.round(vw / 2));
+    wrap.scrollTop  = Math.max(0, _Y_ROOT - Math.round(vh / 3));
+  }
+  setTimeout(centreView, 0);
+  // Second call in case first fires before flex resolves
+  setTimeout(centreView, 100);
 }
 
 // ── Detail panel ─────────────────────────────────────────────
