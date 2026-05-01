@@ -500,22 +500,44 @@ function initSearch() {
 
   input.addEventListener('input', () => {
     clearTimeout(debounce);
-    const query = input.value.trim().toLowerCase();
-    if (query.length < 2) { results.style.display = 'none'; return; }
+    const raw = input.value.trim().toLowerCase();
+    if (raw.length < 2) { results.style.display = 'none'; return; }
 
     debounce = setTimeout(() => {
+      // Split query into words; every word must match somewhere in the name fields
+      const words = raw.split(/\s+/).filter(Boolean);
+
       const matches = [];
       for (const r of SI) {
-        if ([r[2], r[3], r[4], r[5]].join(' ').toLowerCase().includes(query)) {
-          matches.push(r);
-          if (matches.length >= 10) break;
-        }
+        const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
+        const fields = [given, patronymic, surname, maiden]
+          .filter(Boolean)
+          .map(s => s.toLowerCase());
+
+        // Every query word must prefix-match at least one field token
+        const allMatch = words.every(w =>
+          fields.some(f => f.startsWith(w) || f.includes(w))
+        );
+        if (!allMatch) continue;
+
+        // Score: prefer matches where more fields start with a query word
+        const score = words.reduce((s, w) =>
+          s + (fields.some(f => f.startsWith(w)) ? 1 : 0), 0
+        );
+        matches.push({ r, score });
+        if (matches.length >= 50) break; // collect candidates then sort
       }
+
+      // Sort: higher score first, then by birth year
+      matches.sort((a, b) =>
+        b.score - a.score || ((a.r[6] || 9999) - (b.r[6] || 9999))
+      );
 
       results.innerHTML = '';
       if (!matches.length) { results.style.display = 'none'; return; }
 
-      matches.forEach(([id, sex, given, patronymic, surname, maiden, birthYear]) => {
+      matches.slice(0, 10).forEach(({ r }) => {
+        const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
         const name = formatName(given, patronymic, surname, maiden) || `Person #${id}`;
         const div  = document.createElement('div');
         div.className = 'search-result';
