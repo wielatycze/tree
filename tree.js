@@ -66,7 +66,7 @@ async function loadData() {
     const results = {};
     for (let i = 0; i < CONFIG.dataFiles.length; i++) {
       const name = CONFIG.dataFiles[i];
-      msg.textContent = `Loading ${name}…`;
+      msg.textContent = `Загрузка ${name}…`;
       const resp = await fetch(CONFIG.dataDir + name + '.json');
       if (!resp.ok) throw new Error(`Failed to fetch ${name}.json (HTTP ${resp.status})`);
       results[name] = await resp.json();
@@ -79,7 +79,7 @@ async function loadData() {
   } catch (err) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('err-msg').textContent =
-      err.message + '\n\nMake sure the JSON files exist in data/. Run export.py to generate them.';
+      err.message + '\n\nПераканайцеся, што файлы JSON знаходзяцца ў папцы data/. Запусціце export.py для іх стварэння.';
     document.getElementById('err').style.display = 'flex';
     throw err; // stop execution
   }
@@ -242,7 +242,7 @@ function drawBar(svg, cx1, cx2, y, stroke) {
 function createNode(person, x, y, isRoot = false) {
   if (!person) return null;
   const name = formatName(person.given, person.patronymic, person.surname, person.maiden)
-             || `Person #${person.id}`;
+             || `Асоба #${person.id}`;
   const dates = (person.birth || person.death)
     ? `${formatDate(person.birth)} — ${formatDate(person.death)}` : '';
   const div = document.createElement('div');
@@ -435,9 +435,10 @@ function renderTree(tree) {
 
   setTimeout(() => {
     const wrap = document.getElementById('canvas-wrap');
-    wrap.scrollLeft = rootCx - wrap.clientWidth / 2;
-    wrap.scrollTop  = Y_ROOT - Math.round(wrap.clientHeight / 3);
-  }, 50);
+    // Centre the root node horizontally; scroll up to show ancestors
+    wrap.scrollLeft = Math.max(0, rootCx - Math.round(wrap.clientWidth / 2));
+    wrap.scrollTop  = Math.max(0, Y_ROOT - Math.round(wrap.clientHeight / 3));
+  }, 0);
 }
 
 // ── Detail panel ─────────────────────────────────────────────
@@ -447,12 +448,12 @@ function showDetailPanel(person, node) {
   if (node) node.classList.add('is-selected');
 
   const name = formatName(person.given, person.patronymic, person.surname, person.maiden)
-             || `Person #${person.id}`;
+             || `Асоба #${person.id}`;
   document.getElementById('detail-name').textContent = name;
 
   const infoParts = [];
-  if (person.birth) infoParts.push(`Born: ${formatDate(person.birth)}`);
-  if (person.death) infoParts.push(`Died: ${formatDate(person.death)}`);
+  if (person.birth) infoParts.push(`Нар.: ${formatDate(person.birth)}`);
+  if (person.death) infoParts.push(`Пам.: ${formatDate(person.death)}`);
   if (person.place) infoParts.push(person.place);
   if (person.num != null) infoParts.push(`#${person.num}`);
   document.getElementById('detail-info').textContent = infoParts.join('  ·  ');
@@ -462,7 +463,7 @@ function showDetailPanel(person, node) {
   if (person.id !== currentRootId) {
     const btn = document.createElement('button');
     btn.className = 'nav-btn';
-    btn.textContent = 'View tree →';
+    btn.textContent = 'Паказаць дрэва →';
     btn.addEventListener('click', () => navigate(person.id));
     nav.appendChild(btn);
   }
@@ -538,12 +539,12 @@ function initSearch() {
 
       matches.slice(0, 10).forEach(({ r }) => {
         const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
-        const name = formatName(given, patronymic, surname, maiden) || `Person #${id}`;
+        const name = formatName(given, patronymic, surname, maiden) || `Асоба #${id}`;
         const div  = document.createElement('div');
         div.className = 'search-result';
         div.innerHTML = `
           <div class="search-result-name">${name}</div>
-          <div class="search-result-sub">${surname || ''}${birthYear ? ' b.' + birthYear : ''} ${sex === 1 ? '♂' : '♀'}</div>
+          <div class="search-result-sub">${surname || ''}${birthYear ? ' н.' + birthYear : ''} ${sex === 1 ? 'муж.' : 'жан.'}</div>
         `.trim();
         div.addEventListener('click', () => {
           results.style.display = 'none';
