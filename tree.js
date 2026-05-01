@@ -272,8 +272,13 @@ function renderTree(tree) {
   const { ancestorTree, families } = tree;
 
   // ── Ancestor layout ───────────────────────────────────────
-  // Root sits at Y_ROOT. Ancestors go upward, one ROW_H per generation.
-  const Y_ROOT      = 24 + MAX_ANCESTOR_GENERATIONS * ROW_H;
+  // Root sits at Y_ROOT. Y_ROOT is based on actual ancestor depth, not max.
+  const actualDepth = (function maxDepth(node) {
+    if (!node) return 0;
+    return 1 + Math.max(maxDepth(node.father), maxDepth(node.mother));
+  })(ancestorTree) - 1; // subtract 1 because root itself is depth 0
+
+  const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
   const BASE_DROP_Y = Y_ROOT + NODE_H + 36;
 
@@ -334,7 +339,9 @@ function renderTree(tree) {
     rootCx + rightSpouseNeeded + MARGIN,
     rootCx + totalChildrenWidth/2 + MARGIN,
   ));
-  const canvasH = Y_ROOT + 3 * ROW_H + 60;
+  // Canvas height: from top of oldest ancestor to bottom of children row + padding
+  const hasChildren = childGroups.length > 0;
+  const canvasH = Y_ROOT + (hasChildren ? 2 : 1) * ROW_H + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
   const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
@@ -433,12 +440,12 @@ function renderTree(tree) {
   const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
-  setTimeout(() => {
+  // Use rAF to ensure layout is complete before reading clientWidth
+  requestAnimationFrame(() => {
     const wrap = document.getElementById('canvas-wrap');
-    // Centre the root node horizontally; scroll up to show ancestors
     wrap.scrollLeft = Math.max(0, rootCx - Math.round(wrap.clientWidth / 2));
     wrap.scrollTop  = Math.max(0, Y_ROOT - Math.round(wrap.clientHeight / 3));
-  }, 0);
+  });
 }
 
 // ── Detail panel ─────────────────────────────────────────────
