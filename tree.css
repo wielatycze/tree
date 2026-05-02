@@ -178,6 +178,7 @@ body {
   overflow: auto;
   position: relative;
   background: #f5f4f0;
+  padding-bottom: 60px; /* prevent scrollbar from being hidden by detail panel */
 }
 
 #canvas {
