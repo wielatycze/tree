@@ -426,23 +426,28 @@ function renderTree(tree) {
     }
   });
 
-  // ── Spouses + marriage hlines (same in both modes) ────────
+  // ── Spouses + marriage hlines ─────────────────────────────
+  // In descendants mode, renderDescendants handles all families below root.
+  // We still draw the root's spouses here so they appear at the root row,
+  // but only if the family actually has a spouse (no dangling hlines).
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
   const anchorCxList  = anchorOffsets.map(o => rootCx + o);
 
-  leftFams.forEach((fam, i) => {
-    const scx    = leftSpouseCx[i];
-    const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
-    if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
-    drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
-  });
-  rightFams.forEach((fam, i) => {
-    const scx    = rightSpouseCx[i];
-    const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
-    if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
-    drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
-  });
+  if (!descMode) {
+    leftFams.forEach((fam, i) => {
+      const scx    = leftSpouseCx[i];
+      const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
+      if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
+      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+    });
+    rightFams.forEach((fam, i) => {
+      const scx    = rightSpouseCx[i];
+      const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
+      if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
+      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+    });
+  }
 
   // ── Below root: ancestors mode = flat children ────────────
   if (!descMode) {
