@@ -192,24 +192,50 @@ function buildTree(rootId) {
     mother: buildAncestorNode(motherId, 0),
   };
 
-  const families = (MA[rootId] || []).map(([spouseId, marriageDate, childIds]) => ({
-    spouse:   buildPerson(spouseId),
-    date:     marriageDate,
-    children: (childIds || []).map(buildPerson).filter(Boolean),
-  }));
+  const families = (MA[rootId] || []).map(([spouseId, marriageDate, childIds]) => {
+    // childIds from MA is the per-couple list; fall back to all children if empty
+    const children = (childIds && childIds.length)
+      ? childIds.map(buildPerson).filter(Boolean)
+      : [];
+    return {
+      spouse:   buildPerson(spouseId),
+      date:     marriageDate,
+      children,
+    };
+  });
 
+  // Fallback: no marriage records at all — use CH map
   if (!families.length) {
     const ch = (CH[rootId] || []).map(buildPerson).filter(Boolean);
     if (ch.length) families.push({ spouse: null, date: null, children: ch });
   }
 
-  families.forEach(fam => {
+  // If any family with a known spouse has no children, try to fill from CH
+  // (some records have marriage events but children are in CH not MA childIds)
+  const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.id)));
+  const chChildren = (CH[rootId] || []).map(buildPerson).filter(Boolean);
+  const unknownChildren = chChildren.filter(c => !allKnownChildren.has(c.id));
+
+  // Add unknown children to the first family that has no children, or a new family
+  if (unknownChildren.length) {
+    const emptyFam = families.find(f => f.children.length === 0);
+    if (emptyFam) {
+      emptyFam.children = unknownChildren;
+    } else {
+      families.push({ spouse: null, date: null, children: unknownChildren });
+    }
+  }
+
+  // Remove families that have neither spouse nor children (nothing to show)
+  const validFamilies = families.filter(f => f.spouse || f.children.length);
+
+  validFamilies.forEach(fam => {
     fam.children.sort((a, b) =>
       ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999)
     );
   });
 
-  return { ancestorTree, families, descendantTree: null }; // descendantTree built on demand
+  return { ancestorTree, families: validFamilies, descendantTree: null };
 }
 
 /** Attach descendant tree to an already-built tree object */
@@ -438,14 +464,18 @@ function renderTree(tree) {
     leftFams.forEach((fam, i) => {
       const scx    = leftSpouseCx[i];
       const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
-      if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, Y_ROOT);
+        drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+      }
     });
     rightFams.forEach((fam, i) => {
       const scx    = rightSpouseCx[i];
       const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
-      if (fam.spouse) placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, Y_ROOT);
+        drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+      }
     });
   }
 
