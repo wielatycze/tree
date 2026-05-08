@@ -210,20 +210,12 @@ function buildTree(rootId) {
     if (ch.length) families.push({ spouse: null, date: null, children: ch });
   }
 
-  // If any family with a known spouse has no children, try to fill from CH
-  // (some records have marriage events but children are in CH not MA childIds)
+  // Any children not accounted for in MA get their own anonymous family
   const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.id)));
   const chChildren = (CH[rootId] || []).map(buildPerson).filter(Boolean);
   const unknownChildren = chChildren.filter(c => !allKnownChildren.has(c.id));
-
-  // Add unknown children to the first family that has no children, or a new family
   if (unknownChildren.length) {
-    const emptyFam = families.find(f => f.children.length === 0);
-    if (emptyFam) {
-      emptyFam.children = unknownChildren;
-    } else {
-      families.push({ spouse: null, date: null, children: unknownChildren });
-    }
+    families.push({ spouse: null, date: null, children: unknownChildren });
   }
 
   // Remove families that have neither spouse nor children (nothing to show)
@@ -385,11 +377,13 @@ function renderTree(tree) {
     const dnFamSW  = descNode.families.length ? descNode.families.map(descFamilySlotWidth) : [NODE_W];
     const dnTotalW = descNode.families.length
       ? dnFamSW.reduce((s,w)=>s+w,0) + (descNode.families.length-1)*DESC_FAM_GAP : NODE_W;
-    const dnCoupleW0 = descNode.families.length && descNode.families[0].spouse
-      ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
+    const dnFam0   = descNode.families.length ? descNode.families[0] : null;
     const dnFam0SW = dnFamSW[0] || NODE_W;
-    const dnOffset = (dnSlotW - dnTotalW)/2 + dnFam0SW/2 - dnCoupleW0/2 + NODE_W/2;
-    descSlotLeft = rootCx - dnOffset;
+    const dnFam0Centre = (dnSlotW - dnTotalW) / 2 + dnFam0SW / 2; // relative to slotLeft
+    const dnPersonOffset = dnFam0 && dnFam0.spouse
+      ? dnFam0Centre - (NODE_W + DESC_SP_GAP + NODE_W) / 2 + NODE_W / 2
+      : dnFam0Centre;
+    descSlotLeft = rootCx - dnPersonOffset;
 
     const dpos = assignDescendantPositions(descNode, descSlotLeft, 0);
     dpos.forEach(({ cx, depth }) => {
@@ -485,9 +479,11 @@ function renderTree(tree) {
     let cursor = null;
     orderedFams.forEach((fam, fi) => {
       if (!groupWidths[fi]) return;
-      const idealStart = anchorCxList[fi] - groupWidths[fi] / 2;
+      // Anchor: midpoint of root↔spouse hline, or rootCx if no spouse
+      const anchorCx = fam.spouse ? anchorCxList[fi] : rootCx;
+      const idealStart = anchorCx - groupWidths[fi] / 2;
       const start = cursor === null ? Math.max(MARGIN, idealStart) : Math.max(cursor, idealStart);
-      childGroups.push({ fam, anchorCx: anchorCxList[fi], start, width: groupWidths[fi] });
+      childGroups.push({ fam, anchorCx, start, width: groupWidths[fi] });
       cursor = start + groupWidths[fi] + FAM_GAP;
     });
 
@@ -764,12 +760,19 @@ const DESC_SIB_GAP = 20;  // minimum gap between child subtrees
  * Children centred at slot_left + slot_w/2. ✓ No overhangs!
  */
 function descFamilySlotWidth(fam) {
-  const coupleW = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
   const chW = fam.children.length
     ? fam.children.reduce((s, c) => s + descSubtreeWidth(c), 0)
       + (fam.children.length - 1) * DESC_SIB_GAP
     : 0;
-  return Math.max(coupleW, chW);
+  if (fam.spouse) {
+    // Slot centred on couple midpoint: anchor = slot centre
+    // Must fit couple AND children
+    const coupleW = NODE_W + DESC_SP_GAP + NODE_W;
+    return Math.max(coupleW, chW);
+  } else {
+    // No spouse: slot centred on person, children centred under person
+    return Math.max(NODE_W, chW);
+  }
 }
 
 function descSubtreeWidth(node) {
@@ -820,29 +823,36 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
 
   let famLeft = famBlockStart;
 
-  // Person cx: left edge of first family sub-slot + sub-slot/2 - coupleW/2 + NODE_W/2
-  const coupleW0 = node.families.length && node.families[0].spouse
-    ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
+  // Person cx: centre of first family's slot, adjusted by couple offset
+  // If first family has a spouse: person is left of slot centre by coupleW/2 - NODE_W/2
+  // If first family has no spouse: person is at slot centre
+  const fam0 = node.families.length ? node.families[0] : null;
+  const coupleW0 = fam0 && fam0.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
   const fam0SlotW = famSlotWidths[0] || NODE_W;
-  const personCx = famBlockStart + fam0SlotW / 2 - coupleW0 / 2 + NODE_W / 2;
+  const fam0SlotCentre = famBlockStart + fam0SlotW / 2;
+  const personCx = fam0 && fam0.spouse
+    ? fam0SlotCentre - coupleW0 / 2 + NODE_W / 2  // left of couple
+    : fam0SlotCentre;                               // centred in slot
 
   results.push({ node, cx: personCx, depth });
 
   node.families.forEach((fam, fi) => {
-    const fsw    = famSlotWidths[fi];
-    const anchor = famLeft + fsw / 2;
-    const coupleW = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
-    const spouseCx = fam.spouse ? anchor + coupleW / 2 - NODE_W / 2 : null;
+    const fsw         = famSlotWidths[fi];
+    const slotCentre  = famLeft + fsw / 2;
+    const coupleW     = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
+    const spouseCx    = fam.spouse ? slotCentre + coupleW / 2 - NODE_W / 2 : null;
+    // Anchor: midpoint of couple if spouse exists, else personCx
+    const anchorCx    = fam.spouse ? slotCentre : personCx;
 
-    fam._anchorCx = anchor;
+    fam._anchorCx = anchorCx;
     fam._spouseCx = spouseCx;
 
-    // Children centred at anchor
+    // Children centred at anchorCx
     if (fam.children.length) {
       const chWidths = fam.children.map(descSubtreeWidth);
       const chTotal  = chWidths.reduce((s, w) => s + w, 0)
         + (fam.children.length - 1) * DESC_SIB_GAP;
-      let chLeft = anchor - chTotal / 2;
+      let chLeft = anchorCx - chTotal / 2;
       fam.children.forEach((child, ci) => {
         assignDescendantPositions(child, chLeft, depth + 1, results);
         chLeft += chWidths[ci] + DESC_SIB_GAP;
