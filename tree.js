@@ -488,11 +488,14 @@ function renderTree(tree) {
     });
 
     const Y_CH = Y_ROOT + ROW_H;
+    const DROP_START_Y = nodeBot(Y_ROOT); // always start drops from card bottom
     childGroups.forEach((g, gi) => {
       const dropY     = BASE_DROP_Y - gi * STAGGER;
       const firstChCx = nodeCx(g.start);
       const lastChCx  = nodeCx(g.start + (g.fam.children.length-1) * (NODE_W+GAP_X));
-      drawLine(svg, g.anchorCx, HLINE_Y, g.anchorCx, dropY, '#7bc8a8');
+      // Vertical stub from card bottom (or hline if spouse) down to drop bar
+      const stubStartY = g.fam.spouse ? HLINE_Y : DROP_START_Y;
+      drawLine(svg, g.anchorCx, stubStartY, g.anchorCx, dropY, '#7bc8a8');
       drawBar(svg, Math.min(g.anchorCx, firstChCx), Math.max(g.anchorCx, lastChCx), dropY, '#7bc8a8');
       g.fam.children.forEach((child, ci) => {
         const x = g.start + ci * (NODE_W + GAP_X);
@@ -678,7 +681,7 @@ const MAX_DESC_GENERATIONS = 6;
  */
 function buildDescendantNode(id, depth, visited = new Set()) {
   if (!id || depth >= MAX_DESC_GENERATIONS) return null;
-  if (visited.has(id)) return null; // prevent circular references
+  if (visited.has(id)) return null;
   visited.add(id);
   const person = buildPerson(id);
   if (!person) return null;
@@ -687,15 +690,23 @@ function buildDescendantNode(id, depth, visited = new Set()) {
   const families = rawFamilies.map(([spouseId, date, childIds]) => ({
     spouse:   buildPerson(spouseId),
     date,
-    children: (childIds || [])
-      .map(cid => buildDescendantNode(cid, depth + 1, visited))
-      .filter(Boolean)
-      .sort((a, b) =>
-        ((a.person.birth && a.person.birth[0]) || 9999) -
-        ((b.person.birth && b.person.birth[0]) || 9999)
-      ),
+    children: (childIds && childIds.length)
+      ? childIds.map(cid => buildDescendantNode(cid, depth + 1, visited)).filter(Boolean)
+      : [],
   }));
 
+  // Cross-reference CH map — same logic as buildTree
+  const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.person.id)));
+  const chChildren = (CH[id] || [])
+    .filter(cid => !allKnownChildren.has(cid))
+    .map(cid => buildDescendantNode(cid, depth + 1, visited))
+    .filter(Boolean);
+
+  if (chChildren.length) {
+    families.push({ spouse: null, date: null, children: chChildren });
+  }
+
+  // Fallback: no marriage records at all
   if (!families.length) {
     const ch = (CH[id] || [])
       .map(cid => buildDescendantNode(cid, depth + 1, visited))
@@ -703,7 +714,17 @@ function buildDescendantNode(id, depth, visited = new Set()) {
     if (ch.length) families.push({ spouse: null, date: null, children: ch });
   }
 
-  return { person, families };
+  // Remove families with neither spouse nor children
+  const validFamilies = families.filter(f => f.spouse || f.children.length);
+
+  validFamilies.forEach(fam => {
+    fam.children.sort((a, b) =>
+      ((a.person.birth && a.person.birth[0]) || 9999) -
+      ((b.person.birth && b.person.birth[0]) || 9999)
+    );
+  });
+
+  return { person, families: validFamilies };
 }
 
 const DESC_SP_GAP  = 32;  // gap between person node and spouse node
@@ -901,7 +922,9 @@ function renderDescendants(svg, canvas, rootDescNode, slotLeft, startY) {
         if (!childCxs.length) return;
         const barL = Math.min(fam._anchorCx, ...childCxs);
         const barR = Math.max(fam._anchorCx, ...childCxs);
-        drawLine(svg, fam._anchorCx, hlineY, fam._anchorCx, dropY, '#7bc8a8');
+        // Start stub from hline when there's a spouse, from card bottom when not
+        const stubStartY = fam.spouse ? hlineY : nodeBot(y);
+        drawLine(svg, fam._anchorCx, stubStartY, fam._anchorCx, dropY, '#7bc8a8');
         drawBar(svg, barL, barR, dropY, '#7bc8a8');
         childCxs.forEach(chcx => {
           drawLine(svg, chcx, dropY, chcx, startY + (depth + 1) * ROW_H, '#7bc8a8');
