@@ -862,8 +862,8 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
     const slotCentre  = famLeft + fsw / 2;
     const coupleW     = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
     const spouseCx    = fam.spouse ? slotCentre + coupleW / 2 - NODE_W / 2 : null;
-    // Anchor: midpoint of couple if spouse exists, else personCx
-    const anchorCx    = fam.spouse ? slotCentre : personCx;
+    // Anchor: always the slot centre (midpoint of couple when spouse, person centre when not)
+    const anchorCx    = slotCentre;
 
     fam._anchorCx = anchorCx;
     fam._spouseCx = spouseCx;
@@ -922,10 +922,15 @@ function renderDescendants(svg, canvas, rootDescNode, slotLeft, startY) {
         if (!childCxs.length) return;
         const barL = Math.min(fam._anchorCx, ...childCxs);
         const barR = Math.max(fam._anchorCx, ...childCxs);
-        // Start stub from hline when there's a spouse, from card bottom when not
+        // Stub starts from card bottom when no spouse (vertical line from person),
+        // or from hline midpoint when there is a spouse
+        const stubX      = fam.spouse ? fam._anchorCx : personCx;
         const stubStartY = fam.spouse ? hlineY : nodeBot(y);
-        drawLine(svg, fam._anchorCx, stubStartY, fam._anchorCx, dropY, '#7bc8a8');
-        drawBar(svg, barL, barR, dropY, '#7bc8a8');
+        drawLine(svg, stubX, stubStartY, stubX, dropY, '#7bc8a8');
+        // Horizontal bar from stubX to child extents
+        const fullBarL = Math.min(stubX, barL);
+        const fullBarR = Math.max(stubX, barR);
+        drawBar(svg, fullBarL, fullBarR, dropY, '#7bc8a8');
         childCxs.forEach(chcx => {
           drawLine(svg, chcx, dropY, chcx, startY + (depth + 1) * ROW_H, '#7bc8a8');
         });
