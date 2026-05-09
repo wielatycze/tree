@@ -488,15 +488,27 @@ function renderTree(tree) {
     });
 
     const Y_CH = Y_ROOT + ROW_H;
-    const DROP_START_Y = nodeBot(Y_ROOT); // always start drops from card bottom
+    const DROP_START_Y = nodeBot(Y_ROOT);
     childGroups.forEach((g, gi) => {
       const dropY     = BASE_DROP_Y - gi * STAGGER;
       const firstChCx = nodeCx(g.start);
-      const lastChCx  = nodeCx(g.start + (g.fam.children.length-1) * (NODE_W+GAP_X));
-      // Vertical stub from card bottom (or hline if spouse) down to drop bar
+      const lastChCx  = nodeCx(g.start + (g.fam.children.length - 1) * (NODE_W + GAP_X));
       const stubStartY = g.fam.spouse ? HLINE_Y : DROP_START_Y;
+
+      // Vertical stub from anchor down to drop bar level
       drawLine(svg, g.anchorCx, stubStartY, g.anchorCx, dropY, '#7bc8a8');
-      drawBar(svg, Math.min(g.anchorCx, firstChCx), Math.max(g.anchorCx, lastChCx), dropY, '#7bc8a8');
+
+      // Horizontal bar spanning only the children (not necessarily reaching anchor)
+      if (g.fam.children.length > 1) {
+        drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
+      }
+      // Connect stub to first/last child if anchor is outside their span
+      if (g.anchorCx < firstChCx) {
+        drawLine(svg, g.anchorCx, dropY, firstChCx, dropY, '#7bc8a8');
+      } else if (g.anchorCx > lastChCx) {
+        drawLine(svg, lastChCx, dropY, g.anchorCx, dropY, '#7bc8a8');
+      }
+
       g.fam.children.forEach((child, ci) => {
         const x = g.start + ci * (NODE_W + GAP_X);
         placeNode(child, nodeCx(x), Y_CH);
@@ -786,21 +798,31 @@ function descFamilySlotWidth(fam) {
       + (fam.children.length - 1) * DESC_SIB_GAP
     : 0;
   if (fam.spouse) {
-    // Slot centred on couple midpoint: anchor = slot centre
-    // Must fit couple AND children
     const coupleW = NODE_W + DESC_SP_GAP + NODE_W;
     return Math.max(coupleW, chW);
   } else {
-    // No spouse: slot centred on person, children centred under person
     return Math.max(NODE_W, chW);
   }
+}
+
+function descFamilyGap(famA, famB) {
+  // Use a smaller gap between adjacent childless families
+  // so spouses don't drift far from the person
+  const aHasChildren = famA && famA.children.length > 0;
+  const bHasChildren = famB && famB.children.length > 0;
+  return (aHasChildren || bHasChildren) ? DESC_FAM_GAP : DESC_SP_GAP;
 }
 
 function descSubtreeWidth(node) {
   if (!node) return 0;
   if (!node.families.length) return NODE_W;
-  const total = node.families.reduce((s, fam) => s + descFamilySlotWidth(fam), 0)
-    + (node.families.length - 1) * DESC_FAM_GAP;
+  let total = 0;
+  node.families.forEach((fam, fi) => {
+    total += descFamilySlotWidth(fam);
+    if (fi < node.families.length - 1) {
+      total += descFamilyGap(fam, node.families[fi + 1]);
+    }
+  });
   return Math.max(NODE_W, total);
 }
 
@@ -833,9 +855,13 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
   const famSlotWidths = node.families.length
     ? node.families.map(descFamilySlotWidth)
     : [NODE_W];
-  const totalW = node.families.length
-    ? famSlotWidths.reduce((s, w) => s + w, 0) + (node.families.length - 1) * DESC_FAM_GAP
-    : NODE_W;
+  let totalW = NODE_W;
+  if (node.families.length) {
+    totalW = famSlotWidths.reduce((s, w) => s + w, 0);
+    node.families.forEach((fam, fi) => {
+      if (fi < node.families.length - 1) totalW += descFamilyGap(fam, node.families[fi + 1]);
+    });
+  }
 
   // Place family sub-slots left-to-right, centred in the total slot
   // (slotLeft is the left edge of THIS node's total slot, width = descSubtreeWidth(node))
@@ -880,7 +906,7 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
       });
     }
 
-    famLeft += fsw + DESC_FAM_GAP;
+    famLeft += fsw + (fi < node.families.length - 1 ? descFamilyGap(fam, node.families[fi + 1]) : 0);
   });
 
   return results;
@@ -920,17 +946,25 @@ function renderDescendants(svg, canvas, rootDescNode, slotLeft, startY) {
           .map(c => cxMap.get(c.person.id))
           .filter(x => x != null);
         if (!childCxs.length) return;
-        const barL = Math.min(fam._anchorCx, ...childCxs);
-        const barR = Math.max(fam._anchorCx, ...childCxs);
-        // Stub starts from card bottom when no spouse (vertical line from person),
-        // or from hline midpoint when there is a spouse
+
         const stubX      = fam.spouse ? fam._anchorCx : personCx;
         const stubStartY = fam.spouse ? hlineY : nodeBot(y);
+        const firstCx    = childCxs[0];
+        const lastCx     = childCxs[childCxs.length - 1];
+
+        // Vertical stub from person/anchor down to drop bar level
         drawLine(svg, stubX, stubStartY, stubX, dropY, '#7bc8a8');
-        // Horizontal bar from stubX to child extents
-        const fullBarL = Math.min(stubX, barL);
-        const fullBarR = Math.max(stubX, barR);
-        drawBar(svg, fullBarL, fullBarR, dropY, '#7bc8a8');
+
+        // Horizontal bar spanning only children
+        if (childCxs.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
+
+        // Connect stub to children span if stub lands outside it
+        if (stubX < firstCx) {
+          drawLine(svg, stubX, dropY, firstCx, dropY, '#7bc8a8');
+        } else if (stubX > lastCx) {
+          drawLine(svg, lastCx, dropY, stubX, dropY, '#7bc8a8');
+        }
+
         childCxs.forEach(chcx => {
           drawLine(svg, chcx, dropY, chcx, startY + (depth + 1) * ROW_H, '#7bc8a8');
         });
