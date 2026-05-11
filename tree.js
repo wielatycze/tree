@@ -306,7 +306,8 @@ function renderTree(tree) {
 
   const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
-  const BASE_DROP_Y = Y_ROOT + NODE_H + 36;
+  // BASE_DROP_Y: well into the gap so drop lines never overlap tall cards
+  const BASE_DROP_Y = Y_ROOT + NODE_H + Math.round(GAP_Y * 0.55);
 
   // ── Spouse layout offsets ─────────────────────────────────
   const SP_GAP  = 32;
@@ -338,8 +339,11 @@ function renderTree(tree) {
   const groupWidths = orderedFams.map(fam =>
     fam.children.length > 0 ? fam.children.length * (NODE_W + GAP_X) - GAP_X : 0
   );
-  const totalChildrenWidthAnc = groupWidths.reduce((s, w) => s + w, 0)
-    + Math.max(0, groupWidths.filter(w => w > 0).length - 1) * FAM_GAP;
+  // Ancestors mode renders all children as one flat sorted row
+  const allChildrenCount = orderedFams.reduce((s, f) => s + f.children.length, 0);
+  const totalChildrenWidthAnc = allChildrenCount > 0
+    ? allChildrenCount * (NODE_W + GAP_X) - GAP_X
+    : 0;
 
   const belowWidth = descMode && descNode
     ? descSubtreeWidth(descNode)
@@ -375,8 +379,14 @@ function renderTree(tree) {
   if (descMode && descNode) {
     const dnSlotW  = descSubtreeWidth(descNode);
     const dnFamSW  = descNode.families.length ? descNode.families.map(descFamilySlotWidth) : [NODE_W];
-    const dnTotalW = descNode.families.length
-      ? dnFamSW.reduce((s,w)=>s+w,0) + (descNode.families.length-1)*DESC_FAM_GAP : NODE_W;
+    let dnTotalW = NODE_W;
+    if (descNode.families.length) {
+      dnTotalW = dnFamSW.reduce((s,w)=>s+w,0);
+      descNode.families.forEach((fam, fi) => {
+        if (fi < descNode.families.length - 1)
+          dnTotalW += descFamilyGap(fam, descNode.families[fi + 1]);
+      });
+    }
     const dnFam0   = descNode.families.length ? descNode.families[0] : null;
     const dnFam0SW = dnFamSW[0] || NODE_W;
     const dnFam0Centre = (dnSlotW - dnTotalW) / 2 + dnFam0SW / 2; // relative to slotLeft
@@ -475,46 +485,35 @@ function renderTree(tree) {
 
   // ── Below root: ancestors mode = flat children ────────────
   if (!descMode) {
-    const childGroups = [];
-    let cursor = null;
-    orderedFams.forEach((fam, fi) => {
-      if (!groupWidths[fi]) return;
-      // Anchor: midpoint of root↔spouse hline, or rootCx if no spouse
-      const anchorCx = fam.spouse ? anchorCxList[fi] : rootCx;
-      const idealStart = anchorCx - groupWidths[fi] / 2;
-      const start = cursor === null ? Math.max(MARGIN, idealStart) : Math.max(cursor, idealStart);
-      childGroups.push({ fam, anchorCx, start, width: groupWidths[fi] });
-      cursor = start + groupWidths[fi] + FAM_GAP;
-    });
+    // All children across all families, sorted by birth year ascending
+    const allChildren = orderedFams
+      .flatMap(fam => fam.children)
+      .sort((a, b) => ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999));
 
-    const Y_CH = Y_ROOT + ROW_H;
-    const DROP_START_Y = nodeBot(Y_ROOT);
-    childGroups.forEach((g, gi) => {
-      const dropY     = BASE_DROP_Y - gi * STAGGER;
-      const firstChCx = nodeCx(g.start);
-      const lastChCx  = nodeCx(g.start + (g.fam.children.length - 1) * (NODE_W + GAP_X));
-      const stubStartY = g.fam.spouse ? HLINE_Y : DROP_START_Y;
+    if (allChildren.length) {
+      const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
+      const chStart   = Math.max(MARGIN, rootCx - chTotalW / 2);
+      const dropY     = BASE_DROP_Y;
+      const Y_CH      = Y_ROOT + ROW_H;
+      const firstChCx = nodeCx(chStart);
+      const lastChCx  = nodeCx(chStart + (allChildren.length - 1) * (NODE_W + GAP_X));
 
-      // Vertical stub from anchor down to drop bar level
-      drawLine(svg, g.anchorCx, stubStartY, g.anchorCx, dropY, '#7bc8a8');
+      // Vertical stub from card bottom down to drop bar
+      drawLine(svg, rootCx, nodeBot(Y_ROOT), rootCx, dropY, '#7bc8a8');
 
-      // Horizontal bar spanning only the children (not necessarily reaching anchor)
-      if (g.fam.children.length > 1) {
-        drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
-      }
-      // Connect stub to first/last child if anchor is outside their span
-      if (g.anchorCx < firstChCx) {
-        drawLine(svg, g.anchorCx, dropY, firstChCx, dropY, '#7bc8a8');
-      } else if (g.anchorCx > lastChCx) {
-        drawLine(svg, lastChCx, dropY, g.anchorCx, dropY, '#7bc8a8');
-      }
+      // Horizontal bar across all children
+      if (allChildren.length > 1) drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
 
-      g.fam.children.forEach((child, ci) => {
-        const x = g.start + ci * (NODE_W + GAP_X);
+      // Connect stub to children if rootCx outside their span
+      if (rootCx < firstChCx) drawLine(svg, rootCx, dropY, firstChCx, dropY, '#7bc8a8');
+      else if (rootCx > lastChCx) drawLine(svg, lastChCx, dropY, rootCx, dropY, '#7bc8a8');
+
+      allChildren.forEach((child, ci) => {
+        const x = chStart + ci * (NODE_W + GAP_X);
         placeNode(child, nodeCx(x), Y_CH);
         drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
       });
-    });
+    }
 
   // ── Below root: descendants mode = recursive subtree ──────
   } else if (descNode) {
