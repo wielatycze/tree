@@ -306,8 +306,8 @@ function renderTree(tree) {
 
   const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
-  // BASE_DROP_Y: well into the gap so drop lines never overlap tall cards
-  const BASE_DROP_Y = Y_ROOT + NODE_H + Math.round(GAP_Y * 0.55);
+  // BASE_DROP_Y: always within the gap below root, regardless of card height
+  const BASE_DROP_Y = Y_ROOT + ROW_H - 16;
 
   // ── Spouse layout offsets ─────────────────────────────────
   const SP_GAP  = 32;
@@ -485,10 +485,23 @@ function renderTree(tree) {
 
   // ── Below root: ancestors mode = flat children ────────────
   if (!descMode) {
-    // All children across all families, sorted by birth year ascending
+    // Birth year helper — fallback to SI index if no birth event recorded
+    const birthYear = (p) => {
+      if (p.birth && p.birth[0]) return p.birth[0];
+      const r = SI.find(x => x[0] == p.id);
+      return (r && r[6]) || 9999;
+    };
+
+    // Build child→family map for correct anchor (hline midpoint vs card bottom)
+    const childFamMap = new Map();
+    orderedFams.forEach((fam, fi) => {
+      fam.children.forEach(c => childFamMap.set(c.id, { fam, fi }));
+    });
+
+    // All children sorted globally by birth year ascending
     const allChildren = orderedFams
       .flatMap(fam => fam.children)
-      .sort((a, b) => ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999));
+      .sort((a, b) => birthYear(a) - birthYear(b));
 
     if (allChildren.length) {
       const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
@@ -498,15 +511,29 @@ function renderTree(tree) {
       const firstChCx = nodeCx(chStart);
       const lastChCx  = nodeCx(chStart + (allChildren.length - 1) * (NODE_W + GAP_X));
 
-      // Vertical stub from card bottom down to drop bar
-      drawLine(svg, rootCx, nodeBot(Y_ROOT), rootCx, dropY, '#7bc8a8');
+      // Draw per-family stubs from correct anchor
+      // (hline midpoint when spouse known, card bottom when not)
+      const drawnAnchors = new Set();
+      orderedFams.forEach((fam, fi) => {
+        if (!fam.children.length) return;
+        const anchorCx  = fam.spouse ? anchorCxList[fi] : rootCx;
+        const stubStartY = fam.spouse ? HLINE_Y : nodeBot(Y_ROOT);
+        const key = `${anchorCx},${stubStartY}`;
+        if (!drawnAnchors.has(key)) {
+          drawnAnchors.add(key);
+          drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
+        }
+      });
 
-      // Horizontal bar across all children
+      // Horizontal bar spanning all children
       if (allChildren.length > 1) drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
 
-      // Connect stub to children if rootCx outside their span
-      if (rootCx < firstChCx) drawLine(svg, rootCx, dropY, firstChCx, dropY, '#7bc8a8');
-      else if (rootCx > lastChCx) drawLine(svg, lastChCx, dropY, rootCx, dropY, '#7bc8a8');
+      // Extend bar to any stub that lands outside the children span
+      drawnAnchors.forEach(key => {
+        const anchorCx = parseInt(key.split(',')[0]);
+        if (anchorCx < firstChCx) drawLine(svg, anchorCx, dropY, firstChCx, dropY, '#7bc8a8');
+        else if (anchorCx > lastChCx) drawLine(svg, lastChCx, dropY, anchorCx, dropY, '#7bc8a8');
+      });
 
       allChildren.forEach((child, ci) => {
         const x = chStart + ci * (NODE_W + GAP_X);
