@@ -434,7 +434,13 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (famBlocks.length) {
-    const chStart = Math.max(MARGIN, rootCx - belowWidth / 2);
+    const singleFamilyAnchor = famBlocks.length === 1 && famBlocks[0].fam.spouse
+      ? anchorCxList[famBlocks[0].fi]
+      : null;
+    const chStart = Math.max(
+      MARGIN,
+      (singleFamilyAnchor !== null ? singleFamilyAnchor : rootCx) - belowWidth / 2
+    );
     const Y_CH = Y_ROOT + ROW_H;
     const drawnAnchors = new Set();
     const placedBlocks = [];
