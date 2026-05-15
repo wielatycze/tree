@@ -516,6 +516,8 @@ function renderTree(tree) {
       .sort((a, b) => birthYear(a) - birthYear(b));
 
     if (allChildren.length) {
+      const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
+      const chStart   = Math.max(MARGIN, rootCx - chTotalW / 2);
       if (ancestorTree.person.id === DEBUG_ROOT_ID) {
         console.group(`DEBUG children layout root=${ancestorTree.person.id}`);
         console.log('orderedFams:', orderedFams);
@@ -524,8 +526,6 @@ function renderTree(tree) {
         console.log('totalChildrenWidthAnc:', chTotalW);
         console.log('chStart:', chStart);
       }
-      const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
-      const chStart   = Math.max(MARGIN, rootCx - chTotalW / 2);
       const dropY     = BASE_DROP_Y;
       const Y_CH      = Y_ROOT + ROW_H;
       const firstChCx = nodeCx(chStart);
