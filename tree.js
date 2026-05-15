@@ -455,15 +455,18 @@ function renderTree(tree) {
       // Horizontal bar spanning this block of children
       if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
 
-      // Connect stub to block if outside
-      if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
-      else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
+      // Connect stub to block if outside (skip for single children, which are centered under anchor)
+      if (blk.children.length > 1) {
+        if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
+        else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
+      }
 
       // Place child nodes
+      // For single-child blocks, centre the child under the anchor for a straight line
       blk.children.forEach((child, ci) => {
-        const x = cursor + ci * (NODE_W + GAP_X);
-        placeNode(child, nodeCx(x), Y_CH);
-        drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
+        const childCx = blk.children.length === 1 ? anchorCx : nodeCx(cursor + ci * (NODE_W + GAP_X));
+        placeNode(child, childCx, Y_CH);
+        drawLine(svg, childCx, dropY, childCx, Y_CH, '#7bc8a8');
       });
 
       cursor += (blk.children.length * (NODE_W + GAP_X) - GAP_X) + FAM_GAP;
