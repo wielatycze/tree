@@ -440,25 +440,27 @@ function renderTree(tree) {
     const drawnAnchors = new Set();
 
     let cursor = chStart;
-    famBlocks.forEach((blk) => {
+    famBlocks.forEach((blk, fi) => {
       const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
       const famIndex = blk.fi;
       const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
       const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
-      const key = `${anchorCx},${stubStartY}`;
+      const familyDropY = Math.min(dropY + fi * STAGGER, Y_CH - 20);
+      const key = `${anchorCx},${stubStartY},${familyDropY}`;
+
       if (!drawnAnchors.has(key)) {
         drawnAnchors.add(key);
-        drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
+        drawLine(svg, anchorCx, stubStartY, anchorCx, familyDropY, '#7bc8a8');
       }
 
       const blockLeft = cursor;
       const firstCx = nodeCx(blockLeft);
       const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
 
-      if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
+      if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
 
-      if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
-      else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
+      if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
+      else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
 
       blk.children.forEach((child, ci) => {
         let childCx;
@@ -472,7 +474,7 @@ function renderTree(tree) {
           childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
         }
         placeNode(child, childCx, Y_CH);
-        drawLine(svg, childCx, dropY, childCx, Y_CH, '#7bc8a8');
+        drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
       });
 
       cursor += blockWidth + FAM_GAP;
