@@ -463,18 +463,19 @@ function renderTree(tree) {
       const firstCx = nodeCx(blockLeft);
       const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
 
-      if (blk.children.length > 1) {
-        drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
+      if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
 
-        if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
-        else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
-      }
+      if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
+      else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
 
       blk.children.forEach((child, ci) => {
         let childCx;
         if (blk.children.length === 1) {
-          // Always place single child straight under the anchor (vertical alignment).
-          childCx = anchorCx;
+          if (anchorCx >= blockLeft && anchorCx <= blockLeft + blockWidth) {
+            childCx = anchorCx;
+          } else {
+            childCx = anchorCx < blockLeft ? firstCx : lastCx;
+          }
         } else {
           childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
         }
