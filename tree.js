@@ -220,14 +220,6 @@ function buildTree(rootId) {
   // Remove families that have neither spouse nor children (nothing to show)
   const validFamilies = families.filter(f => f.spouse || f.children.length);
 
-  if (rootId === DEBUG_ROOT_ID) {
-    console.group(`DEBUG buildTree root=${rootId}`);
-    console.log('MA[rootId]:', MA[rootId]);
-    console.log('CH[rootId]:', CH[rootId]);
-    console.log('initial families:', families);
-    console.log('validFamilies:', validFamilies);
-    console.groupEnd();
-  }
   validFamilies.forEach(fam => {
     fam.children.sort((a, b) =>
       ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999)
