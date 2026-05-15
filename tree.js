@@ -47,7 +47,6 @@ let BI; // births:       {person_id: [y, m, d]}
 let DE; // deaths:       {person_id: [y, m, d]}
 
 let currentRootId = null;
-let currentMode   = 'ancestors'; // 'ancestors' | 'descendants'
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
@@ -235,18 +234,7 @@ function buildTree(rootId) {
     );
   });
 
-  return { ancestorTree, families: validFamilies, descendantTree: null };
-}
-
-// Debug helper: when inspecting a particular root id, log family/children data
-// to the console for easier debugging. Set DEBUG_ROOT_ID to an id to enable.
-const DEBUG_ROOT_ID = 3375;
-
-/** Attach descendant tree to an already-built tree object */
-function attachDescendants(tree) {
-  if (!tree.descendantTree) {
-    tree.descendantTree = buildDescendantNode(tree.ancestorTree.person.id, 0);
-  }
+  return { ancestorTree, families: validFamilies };
 }
 
 // ── Layout helpers ───────────────────────────────────────────
@@ -308,7 +296,6 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   const { ancestorTree, families } = tree;
-  const descMode = currentMode === 'descendants';
 
   // ── Ancestor depth & Y_ROOT ───────────────────────────────
   const actualDepth = (function maxDepth(node) {
@@ -318,7 +305,6 @@ function renderTree(tree) {
 
   const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
-  // BASE_DROP_Y: always within the gap below root, regardless of card height
   const BASE_DROP_Y = Y_ROOT + ROW_H - 16;
 
   // ── Spouse layout offsets ─────────────────────────────────
@@ -339,27 +325,22 @@ function renderTree(tree) {
     ...rightSpouseOffsets.map(o => o / 2),
   ];
 
-  // ── Children width (ancestors mode) vs descendant width ───
-  // In descendants mode, child spacing is driven by subtree widths.
-  // We still need the descendant tree for width calculation.
-  if (descMode) attachDescendants(tree);
-  const descNode = descMode ? tree.descendantTree : null;
+  // ── Compute below-root width ───────────────────────────────
+  // Children are grouped by family and rendered sequentially.
+  const birthYear = (p) => {
+    if (p.birth && p.birth[0]) return p.birth[0];
+    const r = SI.find(x => x[0] == p.id);
+    return (r && r[6]) || 9999;
+  };
+  const famBlocks = orderedFams
+    .map((fam, fi) => ({ fam, fi, children: fam.children.slice().sort((a,b)=>birthYear(a)-birthYear(b)) }))
+    .filter(b => b.children.length > 0)
+    .sort((A, B) => birthYear(A.children[0]) - birthYear(B.children[0]));
 
-  // Width below root:
-  //   ancestors mode  → fixed-width children groups
-  //   descendants mode → recursive subtree width
-  const groupWidths = orderedFams.map(fam =>
-    fam.children.length > 0 ? fam.children.length * (NODE_W + GAP_X) - GAP_X : 0
-  );
-  // Ancestors mode renders all children as one flat sorted row
-  const allChildrenCount = orderedFams.reduce((s, f) => s + f.children.length, 0);
-  const totalChildrenWidthAnc = allChildrenCount > 0
-    ? allChildrenCount * (NODE_W + GAP_X) - GAP_X
+  const blockWidths = famBlocks.map(b => b.children.length * (NODE_W + GAP_X) - GAP_X);
+  const belowWidth = blockWidths.length > 0
+    ? blockWidths.reduce((s,w) => s + w, 0) + (blockWidths.length - 1) * FAM_GAP
     : 0;
-
-  const belowWidth = descMode && descNode
-    ? descSubtreeWidth(descNode)
-    : totalChildrenWidthAnc;
 
   // ── Resolve rootCx ────────────────────────────────────────
   const leftSpouseNeeded = leftSpouseOffsets.length
@@ -385,50 +366,14 @@ function renderTree(tree) {
     ? rightSpouseOffsets[rightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
   const maxAncCx = positions.reduce((m, p) => Math.max(m, p.cx), rootCx);
 
-  // Descendant tree max extent — compute correct slotLeft first
-  let descSlotLeft = rootCx; // fallback
-  let descMaxRight = rootCx + NODE_W/2, descMaxDepth = 0;
-  if (descMode && descNode) {
-    const dnSlotW  = descSubtreeWidth(descNode);
-    const dnFamSW  = descNode.families.length ? descNode.families.map(descFamilySlotWidth) : [NODE_W];
-    let dnTotalW = NODE_W;
-    if (descNode.families.length) {
-      dnTotalW = dnFamSW.reduce((s,w)=>s+w,0);
-      descNode.families.forEach((fam, fi) => {
-        if (fi < descNode.families.length - 1)
-          dnTotalW += descFamilyGap(fam, descNode.families[fi + 1]);
-      });
-    }
-    const dnFam0   = descNode.families.length ? descNode.families[0] : null;
-    const dnFam0SW = dnFamSW[0] || NODE_W;
-    const dnFam0Centre = (dnSlotW - dnTotalW) / 2 + dnFam0SW / 2; // relative to slotLeft
-    const dnPersonOffset = dnFam0 && dnFam0.spouse
-      ? dnFam0Centre - (NODE_W + DESC_SP_GAP + NODE_W) / 2 + NODE_W / 2
-      : dnFam0Centre;
-    descSlotLeft = rootCx - dnPersonOffset;
-
-    const dpos = assignDescendantPositions(descNode, descSlotLeft, 0);
-    dpos.forEach(({ cx, depth }) => {
-      descMaxRight = Math.max(descMaxRight, cx + NODE_W/2);
-      descMaxDepth = Math.max(descMaxDepth, depth);
-    });
-    // also account for spouse nodes extending right
-    dpos.forEach(({ node }) => {
-      node.families.forEach(fam => {
-        if (fam._spouseCx) descMaxRight = Math.max(descMaxRight, fam._spouseCx + NODE_W/2);
-      });
-    });
-  }
-
   const hasAncChildren = orderedFams.some(f => f.children.length > 0);
   const canvasW = Math.ceil(Math.max(
     maxAncCx + NODE_W/2 + MARGIN,
-    descMaxRight + MARGIN,
     rootCx + rightSpouseNeeded + MARGIN,
     rootCx + belowWidth/2 + MARGIN,
   ));
   const canvasH = Y_ROOT
-    + (descMode ? (descMaxDepth + 1) * ROW_H : (hasAncChildren ? 2 : 1) * ROW_H)
+    + (hasAncChildren ? 2 : 1) * ROW_H
     + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
@@ -469,107 +414,68 @@ function renderTree(tree) {
   });
 
   // ── Spouses + marriage hlines ─────────────────────────────
-  // In descendants mode, renderDescendants handles all families below root.
-  // We still draw the root's spouses here so they appear at the root row,
-  // but only if the family actually has a spouse (no dangling hlines).
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
   const anchorCxList  = anchorOffsets.map(o => rootCx + o);
 
-  if (!descMode) {
-    leftFams.forEach((fam, i) => {
-      const scx    = leftSpouseCx[i];
-      const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, Y_ROOT);
-        drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
-      }
-    });
-    rightFams.forEach((fam, i) => {
-      const scx    = rightSpouseCx[i];
-      const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, Y_ROOT);
-        drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
-      }
-    });
-  }
+  leftFams.forEach((fam, i) => {
+    const scx    = leftSpouseCx[i];
+    const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
+    if (fam.spouse) {
+      placeNode(fam.spouse, scx, Y_ROOT);
+      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+    }
+  });
+  rightFams.forEach((fam, i) => {
+    const scx    = rightSpouseCx[i];
+    const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
+    if (fam.spouse) {
+      placeNode(fam.spouse, scx, Y_ROOT);
+      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+    }
+  });
 
-  // ── Below root: ancestors mode = flat children ────────────
-  if (!descMode) {
-    // Birth year helper — fallback to SI index if no birth event recorded
-    const birthYear = (p) => {
-      if (p.birth && p.birth[0]) return p.birth[0];
-      const r = SI.find(x => x[0] == p.id);
-      return (r && r[6]) || 9999;
-    };
+  // ── Below root: draw children grouped by family ────────────
+  if (famBlocks.length) {
+    const chStart = Math.max(MARGIN, rootCx - belowWidth / 2);
+    const dropY = BASE_DROP_Y;
+    const Y_CH = Y_ROOT + ROW_H;
 
-    // Build child→family map for correct anchor (hline midpoint vs card bottom)
-    const childFamMap = new Map();
-    orderedFams.forEach((fam, fi) => {
-      fam.children.forEach(c => childFamMap.set(c.id, { fam, fi }));
-    });
+    // Draw blocks left-to-right
+    let cursor = chStart;
+    const drawnAnchors = new Set();
+    famBlocks.forEach((blk) => {
+      const firstChildX = cursor;
+      const lastChildX = cursor + (blk.children.length - 1) * (NODE_W + GAP_X);
+      const firstCx = nodeCx(firstChildX);
+      const lastCx = nodeCx(lastChildX);
 
-    // All children sorted globally by birth year ascending
-    const allChildren = orderedFams
-      .flatMap(fam => fam.children)
-      .sort((a, b) => birthYear(a) - birthYear(b));
-
-    if (allChildren.length) {
-      const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
-      const chStart   = Math.max(MARGIN, rootCx - chTotalW / 2);
-      if (ancestorTree.person.id === DEBUG_ROOT_ID) {
-        console.group(`DEBUG children layout root=${ancestorTree.person.id}`);
-        console.log('orderedFams:', orderedFams);
-        console.log('groupWidths:', groupWidths);
-        console.log('allChildren:', allChildren.map(c=>c.id));
-        console.log('totalChildrenWidthAnc:', chTotalW);
-        console.log('chStart:', chStart);
-      }
-      const dropY     = BASE_DROP_Y;
-      const Y_CH      = Y_ROOT + ROW_H;
-      const firstChCx = nodeCx(chStart);
-      const lastChCx  = nodeCx(chStart + (allChildren.length - 1) * (NODE_W + GAP_X));
-
-      // Draw per-family stubs from correct anchor
-      // (hline midpoint when spouse known, card bottom when not)
-      const drawnAnchors = new Set();
-      orderedFams.forEach((fam, fi) => {
-        if (!fam.children.length) return;
-        const anchorCx  = fam.spouse ? anchorCxList[fi] : rootCx;
-        const stubStartY = fam.spouse ? HLINE_Y : nodeBot(Y_ROOT);
-        const key = `${anchorCx},${stubStartY}`;
-        if (!drawnAnchors.has(key)) {
-          drawnAnchors.add(key);
-          drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
-        }
-      });
-
-      if (ancestorTree.person.id === DEBUG_ROOT_ID) {
-        console.log('anchorCxList:', anchorCxList);
-        console.log('drawnAnchors:', Array.from(drawnAnchors));
+      // Determine the family's anchor (midpoint of spouse hline or root when no spouse)
+      const famIndex = blk.fi;
+      const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
+      const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
+      const key = `${anchorCx},${stubStartY}`;
+      if (!drawnAnchors.has(key)) {
+        drawnAnchors.add(key);
+        drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
       }
 
-      // Horizontal bar spanning all children
-      if (allChildren.length > 1) drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
+      // Horizontal bar spanning this block of children
+      if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
 
-      // Extend bar to any stub that lands outside the children span
-      drawnAnchors.forEach(key => {
-        const anchorCx = parseInt(key.split(',')[0]);
-        if (anchorCx < firstChCx) drawLine(svg, anchorCx, dropY, firstChCx, dropY, '#7bc8a8');
-        else if (anchorCx > lastChCx) drawLine(svg, lastChCx, dropY, anchorCx, dropY, '#7bc8a8');
-      });
+      // Connect stub to block if outside
+      if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
+      else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
 
-      allChildren.forEach((child, ci) => {
-        const x = chStart + ci * (NODE_W + GAP_X);
+      // Place child nodes
+      blk.children.forEach((child, ci) => {
+        const x = cursor + ci * (NODE_W + GAP_X);
         placeNode(child, nodeCx(x), Y_CH);
         drawLine(svg, nodeCx(x), dropY, nodeCx(x), Y_CH, '#7bc8a8');
       });
-    }
 
-  // ── Below root: descendants mode = recursive subtree ──────
-  } else if (descNode) {
-    renderDescendants(svg, canvas, descNode, descSlotLeft, Y_ROOT);
+      cursor += (blk.children.length * (NODE_W + GAP_X) - GAP_X) + FAM_GAP;
+    });
   }
 
   // ── Update state ──────────────────────────────────────────
@@ -732,318 +638,4 @@ function initSearch() {
       results.style.display = 'none';
     }
   });
-}
-
-// ── Descendant tree ──────────────────────────────────────────
-
-const MAX_DESC_GENERATIONS = 6;
-
-/**
- * Build a descendant node recursively.
- * Each node: { person, families: [{ spouse, children: [descNode] }] }
- */
-function buildDescendantNode(id, depth, visited = new Set()) {
-  if (!id || depth >= MAX_DESC_GENERATIONS) return null;
-  if (visited.has(id)) return null;
-  visited.add(id);
-  const person = buildPerson(id);
-  if (!person) return null;
-
-  const rawFamilies = MA[id] || [];
-  const families = rawFamilies.map(([spouseId, date, childIds]) => ({
-    spouse:   buildPerson(spouseId),
-    date,
-    children: (childIds && childIds.length)
-      ? childIds.map(cid => buildDescendantNode(cid, depth + 1, visited)).filter(Boolean)
-      : [],
-  }));
-
-  // Cross-reference CH map — same logic as buildTree
-  const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.person.id)));
-  const chChildren = (CH[id] || [])
-    .filter(cid => !allKnownChildren.has(cid))
-    .map(cid => buildDescendantNode(cid, depth + 1, visited))
-    .filter(Boolean);
-
-  if (chChildren.length) {
-    families.push({ spouse: null, date: null, children: chChildren });
-  }
-
-  // Fallback: no marriage records at all
-  if (!families.length) {
-    const ch = (CH[id] || [])
-      .map(cid => buildDescendantNode(cid, depth + 1, visited))
-      .filter(Boolean);
-    if (ch.length) families.push({ spouse: null, date: null, children: ch });
-  }
-
-  // Remove families with neither spouse nor children
-  const validFamilies = families.filter(f => f.spouse || f.children.length);
-
-  validFamilies.forEach(fam => {
-    fam.children.sort((a, b) =>
-      ((a.person.birth && a.person.birth[0]) || 9999) -
-      ((b.person.birth && b.person.birth[0]) || 9999)
-    );
-  });
-
-  return { person, families: validFamilies };
-}
-
-const DESC_SP_GAP  = 32;  // gap between person node and spouse node
-const DESC_FAM_GAP = 40;  // gap between family blocks of the same person
-const DESC_SIB_GAP = 20;  // minimum gap between child subtrees
-
-/**
- * Width of one family block.
- * 
- * Layout per family block:
- *   [  couple  ][  children spread  ]
- *   but centred: anchor = midpoint of couple, children centred under anchor.
- *
- * The family slot must be wide enough that:
- *   - The couple fits (coupleW)
- *   - The children spread fits centred under the anchor
- *     anchor is at coupleW/2 from the left of the slot
- *     children need chW centred there:
- *       left child edge  = coupleW/2 - chW/2
- *       right child edge = coupleW/2 + chW/2
- *   So slot width = max(coupleW, coupleW/2 + chW/2) on right
- *                   and left overhang = max(0, chW/2 - coupleW/2)
- *   Total = left overhang + max(coupleW, coupleW/2 + chW/2)
- *         = max(coupleW, chW)  [when simplified]
- *
- * Wait — that simplifies to max(coupleW, chW). Let's verify:
- *   coupleW=200, chW=300: slot=300, anchor=100, children 100±150 → [-50, 250] ← extends left!
- *
- * The issue: anchor is at coupleW/2 but children need chW centred there.
- * If chW > coupleW, left half of children (chW/2) > coupleW/2, so they extend left.
- * 
- * Correct slot width = chW/2 + max(coupleW/2, chW/2)
- *                    = chW/2 + max(coupleW, chW)/2
- * No wait. Let slot_left=0.
- *   anchor = coupleW/2
- *   children go from (anchor - chW/2) to (anchor + chW/2)
- *   left edge of children = coupleW/2 - chW/2
- *   If chW > coupleW: left edge < 0 → need left padding = chW/2 - coupleW/2
- *   right edge = coupleW/2 + chW/2
- *   Slot = left_padding + right_edge
- *        = max(0, chW/2 - coupleW/2) + coupleW/2 + chW/2
- *        = max(coupleW/2, chW/2) + chW/2     [when chW>=coupleW]
- *   Simpler: slot = max(coupleW, chW) when chW <= coupleW (no overhang)
- *                   left_pad + coupleW/2 + chW/2 when chW > coupleW
- *
- * But this is getting complex. The SIMPLEST correct approach:
- * Centre the slot ON THE COUPLE MIDPOINT.
- * slot_width = max(coupleW, chW)
- * The person is at slot_centre - coupleW/2
- * The spouse is at slot_centre + coupleW/2 - NODE_W (if exists ... actually:)
- *   person_cx = slot_left + slot_w/2 - coupleW/2 + NODE_W/2
- *   anchor    = slot_left + slot_w/2  (centre of slot = anchor)
- *   spouse_cx = slot_left + slot_w/2 + coupleW/2 - NODE_W/2
- * Children centred at slot_left + slot_w/2. ✓ No overhangs!
- */
-function descFamilySlotWidth(fam) {
-  const chW = fam.children.length
-    ? fam.children.reduce((s, c) => s + descSubtreeWidth(c), 0)
-      + (fam.children.length - 1) * DESC_SIB_GAP
-    : 0;
-  if (fam.spouse) {
-    const coupleW = NODE_W + DESC_SP_GAP + NODE_W;
-    return Math.max(coupleW, chW);
-  } else {
-    return Math.max(NODE_W, chW);
-  }
-}
-
-function descFamilyGap(famA, famB) {
-  // Use a smaller gap between adjacent childless families
-  // so spouses don't drift far from the person
-  const aHasChildren = famA && famA.children.length > 0;
-  const bHasChildren = famB && famB.children.length > 0;
-  return (aHasChildren || bHasChildren) ? DESC_FAM_GAP : DESC_SP_GAP;
-}
-
-function descSubtreeWidth(node) {
-  if (!node) return 0;
-  if (!node.families.length) return NODE_W;
-  let total = 0;
-  node.families.forEach((fam, fi) => {
-    total += descFamilySlotWidth(fam);
-    if (fi < node.families.length - 1) {
-      total += descFamilyGap(fam, node.families[fi + 1]);
-    }
-  });
-  return Math.max(NODE_W, total);
-}
-
-/**
- * Assign cx positions top-down.
- * slotLeft = left edge of the slot allocated to this node.
- * The person's cx = slotLeft + slotW/2 adjusted per family layout.
- *
- * Since a person may have multiple families, each family gets its own sub-slot.
- * The person cx is at the centre of the FIRST family's sub-slot minus coupleW/2 + NODE_W/2.
- * But that's weird for multiple families — the person has one position.
- *
- * Better: person cx = left edge of first family slot + firstFamilySlotW/2 - coupleW/2 + NODE_W/2
- * For subsequent families, the anchor moves right but the person stays fixed.
- *
- * Layout for a node with N families, total slot width = subtreeWidth(node):
- *   family slots are placed left to right within the total slot, centred.
- *   Person cx = left edge of family[0] slot + family[0].slotW/2 - coupleW[0]/2 + NODE_W/2
- *   Spouse[i] cx = left edge of family[i] slot + family[i].slotW/2 + coupleW[i]/2 - NODE_W/2
- *   Anchor[i]    = left edge of family[i] slot + family[i].slotW/2
- *   Children[i] centred at Anchor[i]
- *
- * Person has ONE cx. For fi>0, the hline goes from personCx to spouse[fi].cx.
- * This means for fi>0 the couple is NOT centred in the sub-slot — the person
- * is to the left of the sub-slot. That's fine visually.
- */
-function assignDescendantPositions(node, slotLeft, depth, results = []) {
-  if (!node) return results;
-
-  const famSlotWidths = node.families.length
-    ? node.families.map(descFamilySlotWidth)
-    : [NODE_W];
-  let totalW = NODE_W;
-  if (node.families.length) {
-    totalW = famSlotWidths.reduce((s, w) => s + w, 0);
-    node.families.forEach((fam, fi) => {
-      if (fi < node.families.length - 1) totalW += descFamilyGap(fam, node.families[fi + 1]);
-    });
-  }
-
-  // Place family sub-slots left-to-right, centred in the total slot
-  // (slotLeft is the left edge of THIS node's total slot, width = descSubtreeWidth(node))
-  const nodeSlotW = descSubtreeWidth(node);
-  const famBlockStart = slotLeft + (nodeSlotW - totalW) / 2;
-
-  let famLeft = famBlockStart;
-
-  // Compute family anchors first so we can pick a good single `personCx`.
-  // Each family's natural anchor is the centre of its sub-slot. When a
-  // family has a spouse, the person is expected to sit left of the anchor
-  // by (coupleW/2 - NODE_W/2). We compute the desired person position for
-  // every family and pick the average — this keeps the person near their
-  // families and reduces long horizontal connector runs or overlapping
-  // nodes when families vary in width or when spouses are missing.
-  const famAnchors = [];
-  {
-    let p = famBlockStart;
-    node.families.forEach((fam, fi) => {
-      const fsw = famSlotWidths[fi] || NODE_W;
-      famAnchors.push(p + fsw / 2);
-      p += fsw + (fi < node.families.length - 1 ? descFamilyGap(fam, node.families[fi + 1]) : 0);
-    });
-  }
-
-  let personCx;
-  if (famAnchors.length) {
-    const desired = famAnchors.map((anchor, i) => {
-      const fam = node.families[i];
-      const coupleW = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
-      return fam.spouse ? (anchor - coupleW / 2 + NODE_W / 2) : anchor;
-    });
-    personCx = desired.reduce((s, x) => s + x, 0) / desired.length;
-  } else {
-    personCx = slotLeft + nodeSlotW / 2;
-  }
-
-  results.push({ node, cx: personCx, depth });
-
-  node.families.forEach((fam, fi) => {
-    const fsw         = famSlotWidths[fi];
-    const slotCentre  = famLeft + fsw / 2;
-    const coupleW     = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
-    const spouseCx    = fam.spouse ? slotCentre + coupleW / 2 - NODE_W / 2 : null;
-    // Anchor: always the slot centre (midpoint of couple when spouse, person centre when not)
-    const anchorCx    = slotCentre;
-
-    fam._anchorCx = anchorCx;
-    fam._spouseCx = spouseCx;
-
-    // Children centred at anchorCx
-    if (fam.children.length) {
-      const chWidths = fam.children.map(descSubtreeWidth);
-      const chTotal  = chWidths.reduce((s, w) => s + w, 0)
-        + (fam.children.length - 1) * DESC_SIB_GAP;
-      let chLeft = anchorCx - chTotal / 2;
-      fam.children.forEach((child, ci) => {
-        assignDescendantPositions(child, chLeft, depth + 1, results);
-        chLeft += chWidths[ci] + DESC_SIB_GAP;
-      });
-    }
-
-    famLeft += fsw + (fi < node.families.length - 1 ? descFamilyGap(fam, node.families[fi + 1]) : 0);
-  });
-
-  return results;
-}
-
-function renderDescendants(svg, canvas, rootDescNode, slotLeft, startY) {
-  const positions = assignDescendantPositions(rootDescNode, slotLeft, 0);
-  const cxMap = new Map(positions.map(({ node, cx }) => [node.person.id, cx]));
-  const placed = new Set();
-
-  // Place all non-root person nodes
-  positions.forEach(({ node, cx, depth }) => {
-    if (depth === 0) return;
-    if (placed.has(node.person.id)) return;
-    placed.add(node.person.id);
-    createAndAppend(node.person, cx, startY + depth * ROW_H, canvas);
-  });
-
-  // Draw spouses and connectors
-  positions.forEach(({ node, cx: personCx, depth }) => {
-    const y        = startY + depth * ROW_H;
-    const hlineY   = y + Math.round(NODE_H / 2);
-    const baseDrop = y + NODE_H + 36;
-
-    node.families.forEach((fam, fi) => {
-      if (fam.spouse && fam._spouseCx != null) {
-        if (!placed.has(fam.spouse.id)) {
-          placed.add(fam.spouse.id);
-          createAndAppend(fam.spouse, fam._spouseCx, y, canvas);
-        }
-        drawLine(svg, personCx, hlineY, fam._spouseCx, hlineY, '#bbb', true);
-      }
-
-      if (fam.children.length && fam._anchorCx != null) {
-        const dropY    = baseDrop - fi * 22;
-        const childCxs = fam.children
-          .map(c => cxMap.get(c.person.id))
-          .filter(x => x != null);
-        if (!childCxs.length) return;
-
-        const stubX      = fam.spouse ? fam._anchorCx : personCx;
-        const stubStartY = fam.spouse ? hlineY : nodeBot(y);
-        const firstCx    = childCxs[0];
-        const lastCx     = childCxs[childCxs.length - 1];
-
-        // Vertical stub from person/anchor down to drop bar level
-        drawLine(svg, stubX, stubStartY, stubX, dropY, '#7bc8a8');
-
-        // Horizontal bar spanning only children
-        if (childCxs.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
-
-        // Connect stub to children span if stub lands outside it
-        if (stubX < firstCx) {
-          drawLine(svg, stubX, dropY, firstCx, dropY, '#7bc8a8');
-        } else if (stubX > lastCx) {
-          drawLine(svg, lastCx, dropY, stubX, dropY, '#7bc8a8');
-        }
-
-        childCxs.forEach(chcx => {
-          drawLine(svg, chcx, dropY, chcx, startY + (depth + 1) * ROW_H, '#7bc8a8');
-        });
-      }
-    });
-  });
-}
-
-
-function createAndAppend(person, cx, y, canvas) {
-  const node = createNode(person, cx - NODE_W / 2, y);
-  if (node) canvas.appendChild(node);
 }
