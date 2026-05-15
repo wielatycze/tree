@@ -896,16 +896,12 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
 
   let famLeft = famBlockStart;
 
-  // Person cx: centre of first family's slot, adjusted by couple offset
-  // If first family has a spouse: person is left of slot centre by coupleW/2 - NODE_W/2
-  // If first family has no spouse: person is at slot centre
-  const fam0 = node.families.length ? node.families[0] : null;
-  const coupleW0 = fam0 && fam0.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
-  const fam0SlotW = famSlotWidths[0] || NODE_W;
-  const fam0SlotCentre = famBlockStart + fam0SlotW / 2;
-  const personCx = fam0 && fam0.spouse
-    ? fam0SlotCentre - coupleW0 / 2 + NODE_W / 2  // left of couple
-    : fam0SlotCentre;                               // centred in slot
+  // Person cx: centre the person within the total slot allocated to this node.
+  // This keeps the person's vertical stubs aligned with their family anchors
+  // (avoids long horizontal connectors when a family has no spouse or when
+  // the node has multiple families). The person is therefore centred in
+  // the node's overall slot rather than biased to the first family.
+  const personCx = slotLeft + nodeSlotW / 2;
 
   results.push({ node, cx: personCx, depth });
 
