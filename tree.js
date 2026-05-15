@@ -47,6 +47,7 @@ let BI; // births:       {person_id: [y, m, d]}
 let DE; // deaths:       {person_id: [y, m, d]}
 
 let currentRootId = null;
+let currentMode = 'ancestors';
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
@@ -434,13 +435,8 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (famBlocks.length) {
-    const singleFamilyAnchor = famBlocks.length === 1 && famBlocks[0].fam.spouse
-      ? anchorCxList[famBlocks[0].fi]
-      : null;
-    const chStart = Math.max(
-      MARGIN,
-      (singleFamilyAnchor !== null ? singleFamilyAnchor : rootCx) - belowWidth / 2
-    );
+    const singleFamilyAnchor = TreeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
+    const chStart = TreeLayout.computeChildrenStart(rootCx, singleFamilyAnchor, belowWidth, MARGIN);
     const Y_CH = Y_ROOT + ROW_H;
     const drawnAnchors = new Set();
     const placedBlocks = [];
