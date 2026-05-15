@@ -516,6 +516,14 @@ function renderTree(tree) {
       .sort((a, b) => birthYear(a) - birthYear(b));
 
     if (allChildren.length) {
+      if (ancestorTree.person.id === DEBUG_ROOT_ID) {
+        console.group(`DEBUG children layout root=${ancestorTree.person.id}`);
+        console.log('orderedFams:', orderedFams);
+        console.log('groupWidths:', groupWidths);
+        console.log('allChildren:', allChildren.map(c=>c.id));
+        console.log('totalChildrenWidthAnc:', chTotalW);
+        console.log('chStart:', chStart);
+      }
       const chTotalW  = allChildren.length * (NODE_W + GAP_X) - GAP_X;
       const chStart   = Math.max(MARGIN, rootCx - chTotalW / 2);
       const dropY     = BASE_DROP_Y;
@@ -536,6 +544,11 @@ function renderTree(tree) {
           drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
         }
       });
+
+      if (ancestorTree.person.id === DEBUG_ROOT_ID) {
+        console.log('anchorCxList:', anchorCxList);
+        console.log('drawnAnchors:', Array.from(drawnAnchors));
+      }
 
       // Horizontal bar spanning all children
       if (allChildren.length > 1) drawBar(svg, firstChCx, lastChCx, dropY, '#7bc8a8');
