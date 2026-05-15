@@ -326,8 +326,13 @@ function renderTree(tree) {
   };
   const famBlocks = orderedFams
     .map((fam, fi) => ({ fam, fi, children: fam.children.slice().sort((a,b)=>birthYear(a)-birthYear(b)) }))
-    .filter(b => b.children.length > 0)
-    .sort((A, B) => birthYear(A.children[0]) - birthYear(B.children[0]));
+    .filter(b => b.children.length > 0);
+
+  famBlocks.sort((A, B) => {
+    const aAnchor = orderedFams[A.fi].spouse ? anchorCxList[A.fi] : rootCx;
+    const bAnchor = orderedFams[B.fi].spouse ? anchorCxList[B.fi] : rootCx;
+    return aAnchor - bAnchor || birthYear(A.children[0]) - birthYear(B.children[0]);
+  });
 
   const blockWidths = famBlocks.map(b => b.children.length * (NODE_W + GAP_X) - GAP_X);
   const belowWidth = blockWidths.length > 0
@@ -429,10 +434,12 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (famBlocks.length) {
+    const chStart = Math.max(MARGIN, rootCx - belowWidth / 2);
     const dropY = BASE_DROP_Y;
     const Y_CH = Y_ROOT + ROW_H;
     const drawnAnchors = new Set();
 
+    let cursor = chStart;
     famBlocks.forEach((blk) => {
       const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
       const famIndex = blk.fi;
@@ -444,23 +451,31 @@ function renderTree(tree) {
         drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
       }
 
-      const blockLeft = anchorCx - blockWidth / 2;
+      const blockLeft = cursor;
       const firstCx = nodeCx(blockLeft);
-      const lastCx = nodeCx(blockLeft + (blk.children.length - 1) * (NODE_W + GAP_X));
+      const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
 
       if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
 
-      // When the anchor is not inside the block, connect it to the block edge.
-      if (blk.children.length > 1) {
-        if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
-        else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
-      }
+      if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
+      else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
 
       blk.children.forEach((child, ci) => {
-        const childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
+        let childCx;
+        if (blk.children.length === 1) {
+          if (anchorCx >= blockLeft && anchorCx <= blockLeft + blockWidth) {
+            childCx = anchorCx;
+          } else {
+            childCx = anchorCx < blockLeft ? firstCx : lastCx;
+          }
+        } else {
+          childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
+        }
         placeNode(child, childCx, Y_CH);
         drawLine(svg, childCx, dropY, childCx, Y_CH, '#7bc8a8');
       });
+
+      cursor += blockWidth + FAM_GAP;
     });
   }
 
