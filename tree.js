@@ -896,12 +896,34 @@ function assignDescendantPositions(node, slotLeft, depth, results = []) {
 
   let famLeft = famBlockStart;
 
-  // Person cx: centre the person within the total slot allocated to this node.
-  // This keeps the person's vertical stubs aligned with their family anchors
-  // (avoids long horizontal connectors when a family has no spouse or when
-  // the node has multiple families). The person is therefore centred in
-  // the node's overall slot rather than biased to the first family.
-  const personCx = slotLeft + nodeSlotW / 2;
+  // Compute family anchors first so we can pick a good single `personCx`.
+  // Each family's natural anchor is the centre of its sub-slot. When a
+  // family has a spouse, the person is expected to sit left of the anchor
+  // by (coupleW/2 - NODE_W/2). We compute the desired person position for
+  // every family and pick the average — this keeps the person near their
+  // families and reduces long horizontal connector runs or overlapping
+  // nodes when families vary in width or when spouses are missing.
+  const famAnchors = [];
+  {
+    let p = famBlockStart;
+    node.families.forEach((fam, fi) => {
+      const fsw = famSlotWidths[fi] || NODE_W;
+      famAnchors.push(p + fsw / 2);
+      p += fsw + (fi < node.families.length - 1 ? descFamilyGap(fam, node.families[fi + 1]) : 0);
+    });
+  }
+
+  let personCx;
+  if (famAnchors.length) {
+    const desired = famAnchors.map((anchor, i) => {
+      const fam = node.families[i];
+      const coupleW = fam.spouse ? NODE_W + DESC_SP_GAP + NODE_W : NODE_W;
+      return fam.spouse ? (anchor - coupleW / 2 + NODE_W / 2) : anchor;
+    });
+    personCx = desired.reduce((s, x) => s + x, 0) / desired.length;
+  } else {
+    personCx = slotLeft + nodeSlotW / 2;
+  }
 
   results.push({ node, cx: personCx, depth });
 
