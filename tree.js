@@ -429,20 +429,12 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (famBlocks.length) {
-    const chStart = Math.max(MARGIN, rootCx - belowWidth / 2);
     const dropY = BASE_DROP_Y;
     const Y_CH = Y_ROOT + ROW_H;
-
-    // Draw blocks left-to-right
-    let cursor = chStart;
     const drawnAnchors = new Set();
-    famBlocks.forEach((blk) => {
-      const firstChildX = cursor;
-      const lastChildX = cursor + (blk.children.length - 1) * (NODE_W + GAP_X);
-      const firstCx = nodeCx(firstChildX);
-      const lastCx = nodeCx(lastChildX);
 
-      // Determine the family's anchor (midpoint of spouse hline or root when no spouse)
+    famBlocks.forEach((blk) => {
+      const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
       const famIndex = blk.fi;
       const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
       const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
@@ -452,24 +444,23 @@ function renderTree(tree) {
         drawLine(svg, anchorCx, stubStartY, anchorCx, dropY, '#7bc8a8');
       }
 
-      // Horizontal bar spanning this block of children
+      const blockLeft = anchorCx - blockWidth / 2;
+      const firstCx = nodeCx(blockLeft);
+      const lastCx = nodeCx(blockLeft + (blk.children.length - 1) * (NODE_W + GAP_X));
+
       if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, dropY, '#7bc8a8');
 
-      // Connect stub to block if outside (skip for single children, which are centered under anchor)
+      // When the anchor is not inside the block, connect it to the block edge.
       if (blk.children.length > 1) {
         if (anchorCx < firstCx) drawLine(svg, anchorCx, dropY, firstCx, dropY, '#7bc8a8');
         else if (anchorCx > lastCx) drawLine(svg, lastCx, dropY, anchorCx, dropY, '#7bc8a8');
       }
 
-      // Place child nodes
-      // For single-child blocks, centre the child under the anchor for a straight line
       blk.children.forEach((child, ci) => {
-        const childCx = blk.children.length === 1 ? anchorCx : nodeCx(cursor + ci * (NODE_W + GAP_X));
+        const childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
         placeNode(child, childCx, Y_CH);
         drawLine(svg, childCx, dropY, childCx, Y_CH, '#7bc8a8');
       });
-
-      cursor += (blk.children.length * (NODE_W + GAP_X) - GAP_X) + FAM_GAP;
     });
   }
 
