@@ -329,8 +329,8 @@ function renderTree(tree) {
     .filter(b => b.children.length > 0);
 
   famBlocks.sort((A, B) => {
-    const aAnchor = orderedFams[A.fi].spouse ? anchorCxList[A.fi] : rootCx;
-    const bAnchor = orderedFams[B.fi].spouse ? anchorCxList[B.fi] : rootCx;
+    const aAnchor = orderedFams[A.fi].spouse ? anchorOffsets[A.fi] : 0;
+    const bAnchor = orderedFams[B.fi].spouse ? anchorOffsets[B.fi] : 0;
     return aAnchor - bAnchor || birthYear(A.children[0]) - birthYear(B.children[0]);
   });
 
