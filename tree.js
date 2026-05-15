@@ -435,9 +435,9 @@ function renderTree(tree) {
   // ── Below root: draw children grouped by family ────────────
   if (famBlocks.length) {
     const chStart = Math.max(MARGIN, rootCx - belowWidth / 2);
-    const dropY = BASE_DROP_Y;
     const Y_CH = Y_ROOT + ROW_H;
     const drawnAnchors = new Set();
+    const placedBlocks = [];
 
     let cursor = chStart;
     famBlocks.forEach((blk, fi) => {
@@ -445,7 +445,13 @@ function renderTree(tree) {
       const famIndex = blk.fi;
       const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
       const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
-      const familyDropY = Math.min(dropY + fi * STAGGER, Y_CH - 20);
+      let familyDropY = BASE_DROP_Y;
+      for (const prev of placedBlocks) {
+        if (anchorCx >= prev.firstCx && anchorCx <= prev.lastCx) {
+          familyDropY = Math.min(familyDropY, prev.familyDropY - STAGGER);
+        }
+      }
+      familyDropY = Math.max(HLINE_Y + 20, familyDropY);
       const key = `${anchorCx},${stubStartY},${familyDropY}`;
 
       if (!drawnAnchors.has(key)) {
@@ -476,6 +482,8 @@ function renderTree(tree) {
         placeNode(child, childCx, Y_CH);
         drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
       });
+
+      placedBlocks.push({ firstCx, lastCx, familyDropY });
 
       cursor += blockWidth + FAM_GAP;
     });
