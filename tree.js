@@ -230,6 +230,114 @@ function buildTree(rootId) {
   return { ancestorTree, families: validFamilies };
 }
 
+function birthYear(person) {
+  if (!person) return 9999;
+  if (person.birth && person.birth[0]) return person.birth[0];
+  const r = SI.find(x => x[0] == person.id);
+  return (r && r[6]) || 9999;
+}
+
+function buildFamilyGroups(personId) {
+  const families = (MA[personId] || []).map(([spouseId, marriageDate, childIds]) => {
+    const children = (childIds && childIds.length)
+      ? childIds.map(buildPerson).filter(Boolean)
+      : [];
+    return {
+      spouse: buildPerson(spouseId),
+      date: marriageDate,
+      children,
+    };
+  });
+
+  if (!families.length) {
+    const ch = (CH[personId] || []).map(buildPerson).filter(Boolean);
+    if (ch.length) families.push({ spouse: null, date: null, children: ch });
+  }
+
+  const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.id)));
+  const chChildren = (CH[personId] || []).map(buildPerson).filter(Boolean);
+  const unknownChildren = chChildren.filter(c => !allKnownChildren.has(c.id));
+  if (unknownChildren.length) {
+    families.push({ spouse: null, date: null, children: unknownChildren });
+  }
+
+  const validFamilies = families.filter(f => f.spouse || f.children.length);
+  validFamilies.forEach(fam => {
+    fam.children.sort((a, b) => birthYear(a) - birthYear(b));
+  });
+
+  return validFamilies;
+}
+
+const DESCENDANT_LAYOUT_CACHE = new Map();
+
+function computeDescendantDepth(personId) {
+  let depth = 0;
+  let queue = [personId];
+  while (queue.length) {
+    const next = [];
+    for (const id of queue) {
+      const families = buildFamilyGroups(id);
+      families.forEach(f => {
+        f.children.forEach(c => next.push(c.id));
+      });
+    }
+    if (!next.length) break;
+    depth += 1;
+    queue = next;
+  }
+  return depth;
+}
+
+function computeDescendantLayout(personId) {
+  if (DESCENDANT_LAYOUT_CACHE.has(personId)) return DESCENDANT_LAYOUT_CACHE.get(personId);
+
+  const families = buildFamilyGroups(personId);
+  if (!families.length) {
+    const layout = {
+      width: NODE_W,
+      rootOffset: NODE_W / 2,
+    };
+    DESCENDANT_LAYOUT_CACHE.set(personId, layout);
+    return layout;
+  }
+
+  const familyBlocks = families.map(fam => {
+    const childLayouts = fam.children.map(c => computeDescendantLayout(c.id));
+    // In descendant mode, each generation renders at separate Y level
+    // so only reserve space for immediate sibling widths (NODE_W each), not recursive descendants
+    const childrenWidth = childLayouts.length
+      ? childLayouts.length * NODE_W + (childLayouts.length - 1) * GAP_X
+      : NODE_W;
+    const spouseSpan = fam.spouse ? NODE_W + SP_GAP + NODE_W : NODE_W;
+    const blockWidth = Math.max(childrenWidth, spouseSpan, NODE_W);
+    return {
+      fam,
+      childLayouts,
+      childrenWidth,
+      blockWidth,
+      hasSpouse: !!fam.spouse,
+    };
+  });
+
+  const totalFamilyWidth = familyBlocks.length
+    ? familyBlocks.reduce((sum, b) => sum + b.blockWidth, 0) + (familyBlocks.length - 1) * FAM_GAP
+    : NODE_W;
+
+  const width = Math.max(totalFamilyWidth, NODE_W);
+  const rootOffset = familyBlocks.length === 1 && familyBlocks[0].hasSpouse
+    ? NODE_W / 2
+    : width / 2;
+
+  const layout = { width, rootOffset };
+  DESCENDANT_LAYOUT_CACHE.set(personId, layout);
+  return layout;
+}
+
+function computeDescendantWidth(personId) {
+  return computeDescendantLayout(personId).width;
+}
+
 // ── Layout helpers ───────────────────────────────────────────
 
 /** X centre of a node placed at left edge x */
@@ -434,62 +542,192 @@ function renderTree(tree) {
   });
 
   // ── Below root: draw children grouped by family ────────────
-  if (famBlocks.length) {
-    const singleFamilyAnchor = TreeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
-    const chStart = TreeLayout.computeChildrenStart(rootCx, singleFamilyAnchor, belowWidth, MARGIN);
-    const Y_CH = Y_ROOT + ROW_H;
-    const drawnAnchors = new Set();
-    const placedBlocks = [];
+  if (currentMode === 'descendants') {
+    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN);
+  } else {
+    renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN);
+  }
 
-    let cursor = chStart;
-    famBlocks.forEach((blk, fi) => {
-      const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
-      const famIndex = blk.fi;
-      const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
-      const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
-      let familyDropY = BASE_DROP_Y;
-      for (const prev of placedBlocks) {
-        if (anchorCx >= prev.firstCx && anchorCx <= prev.lastCx) {
-          familyDropY = Math.min(familyDropY, prev.familyDropY - STAGGER);
-        }
+function renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN) {
+  const singleFamilyAnchor = TreeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
+  const chStart = TreeLayout.computeChildrenStart(rootCx, singleFamilyAnchor, belowWidth, MARGIN);
+  const Y_CH = Y_ROOT + ROW_H;
+  const drawnAnchors = new Set();
+  const placedBlocks = [];
+
+  let cursor = chStart;
+  famBlocks.forEach((blk, fi) => {
+    const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
+    const famIndex = blk.fi;
+    const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
+    const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
+    let familyDropY = BASE_DROP_Y;
+    for (const prev of placedBlocks) {
+      if (anchorCx >= prev.firstCx && anchorCx <= prev.lastCx) {
+        familyDropY = Math.min(familyDropY, prev.familyDropY - STAGGER);
       }
-      familyDropY = Math.max(HLINE_Y + 20, familyDropY);
-      const key = `${anchorCx},${stubStartY},${familyDropY}`;
+    }
+    familyDropY = Math.max(HLINE_Y + 20, familyDropY);
+    const key = `${anchorCx},${stubStartY},${familyDropY}`;
 
-      if (!drawnAnchors.has(key)) {
-        drawnAnchors.add(key);
-        drawLine(svg, anchorCx, stubStartY, anchorCx, familyDropY, '#7bc8a8');
+    if (!drawnAnchors.has(key)) {
+      drawnAnchors.add(key);
+      drawLine(svg, anchorCx, stubStartY, anchorCx, familyDropY, '#7bc8a8');
+    }
+
+    const blockLeft = cursor;
+    const firstCx = nodeCx(blockLeft);
+    const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
+
+    if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
+
+    if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
+    else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
+
+    blk.children.forEach((child, ci) => {
+      let childCx;
+      if (blk.children.length === 1) {
+        childCx = anchorCx;
+      } else {
+        childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
       }
+      placeNode(child, childCx, Y_CH);
+      drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
+    });
 
-      const blockLeft = cursor;
-      const firstCx = nodeCx(blockLeft);
-      const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
+    placedBlocks.push({ firstCx, lastCx, familyDropY });
+    cursor += blockWidth + FAM_GAP;
+  });
+}
 
-      if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
+function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN) {
+  const rootFamilies = orderedFams.filter(Boolean);
+  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, false, MARGIN);
 
-      if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
-      else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
+  while (queue.length) {
+    const nextQueue = [];
+    for (const { person, cx, y } of queue) {
+      const families = buildFamilyGroups(person.id).filter(Boolean);
+      if (!families.length) continue;
+      nextQueue.push(...renderDescendantParent(svg, person, cx, y, families, true, MARGIN));
+    }
+    queue = nextQueue;
+  }
+}
 
-      blk.children.forEach((child, ci) => {
-        let childCx;
-        if (blk.children.length === 1) {
-          if (anchorCx >= blockLeft && anchorCx <= blockLeft + blockWidth) {
-            childCx = anchorCx;
-          } else {
-            childCx = anchorCx < blockLeft ? firstCx : lastCx;
-          }
-        } else {
-          childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
-        }
-        placeNode(child, childCx, Y_CH);
-        drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
-      });
+function renderDescendantParent(svg, parent, parentCx, parentY, families, renderSpouses, MARGIN) {
+  families = (families || []).filter(Boolean);
+  if (!families.length) return [];
 
-      placedBlocks.push({ firstCx, lastCx, familyDropY });
+  const Y_CH = parentY + ROW_H;
+  const baseDropY = parentY + ROW_H - 16;
+  const orderedFams = families.length > 1 ? [families[0], ...families.slice(1)] : families;
+  const leftFams = families.length > 1 ? [families[0]] : [];
+  const rightFams = families.length > 1 ? families.slice(1) : families;
+  const leftSpouseOffsets = leftFams.map((_, i) => -(NODE_W / 2 + SP_GAP + NODE_W / 2 + i * (NODE_W + SP_GAP)));
+  const rightSpouseOffsets = rightFams.map((_, i) => NODE_W / 2 + SP_GAP + NODE_W / 2 + i * (NODE_W + SP_GAP));
+  const anchorOffsets = [...leftSpouseOffsets.map(o => o / 2), ...rightSpouseOffsets.map(o => o / 2)];
+  const anchorCxList = anchorOffsets.map(o => parentCx + o);
 
-      cursor += blockWidth + FAM_GAP;
+  if (renderSpouses) {
+    leftFams.forEach((fam, i) => {
+      const scx = parentCx + leftSpouseOffsets[i];
+      const fromCx = i === 0 ? parentCx : parentCx + leftSpouseOffsets[i - 1];
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, parentY);
+        const hlineY = parentY + Math.round(NODE_H / 2);
+        drawLine(svg, scx, hlineY, fromCx, hlineY, '#bbb', true);
+      }
+    });
+    rightFams.forEach((fam, i) => {
+      const scx = parentCx + rightSpouseOffsets[i];
+      const fromCx = i === 0 ? parentCx : parentCx + rightSpouseOffsets[i - 1];
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, parentY);
+        const hlineY = parentY + Math.round(NODE_H / 2);
+        drawLine(svg, fromCx, hlineY, scx, hlineY, '#bbb', true);
+      }
     });
   }
+
+  const famBlocks = orderedFams.map((fam, fi) => {
+    const children = Array.isArray(fam.children) ? fam.children : [];
+    const childLayouts = children.map(child => computeDescendantLayout(child.id));
+    // Each child block = its full recursive subtree width
+    const childrenWidth = childLayouts.length
+      ? childLayouts.reduce((sum, l) => sum + l.width, 0) + (childLayouts.length - 1) * GAP_X
+      : NODE_W;
+    const spouseSpan = fam.spouse
+      ? NODE_W + SP_GAP + NODE_W
+      : NODE_W;
+    const blockWidth = Math.max(childrenWidth, spouseSpan, NODE_W);
+    return { fam, fi, children, childLayouts, childrenWidth, blockWidth };
+  });
+  const blockWidths = famBlocks.map(b => b.blockWidth);
+  const belowWidth = blockWidths.length > 0
+    ? blockWidths.reduce((sum, width) => sum + width, 0) + (blockWidths.length - 1) * FAM_GAP
+    : 0;
+  const singleFamilyAnchor = TreeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
+  const chStart = TreeLayout.computeChildrenStart(parentCx, singleFamilyAnchor, belowWidth, MARGIN);
+  const drawnAnchors = new Set();
+  const placedBlocks = [];
+  const childPositions = [];
+
+  let cursor = chStart;
+  famBlocks.forEach((blk, fi) => {
+    const blockWidth = blk.blockWidth;
+    const famIndex = blk.fi;
+    const anchorCx = blk.fam.spouse ? parentCx + anchorOffsets[famIndex] : parentCx;
+    const stubStartY = blk.fam.spouse ? parentY + Math.round(NODE_H / 2) : nodeBot(parentY);
+    let familyDropY = baseDropY;
+    for (const prev of placedBlocks) {
+      if (anchorCx >= prev.firstCx && anchorCx <= prev.lastCx) {
+        familyDropY = Math.min(familyDropY, prev.familyDropY - STAGGER);
+      }
+    }
+    familyDropY = Math.max(stubStartY + 20, familyDropY);
+    const key = `${anchorCx},${stubStartY},${familyDropY}`;
+
+    if (!drawnAnchors.has(key) && blk.children.length) {
+      drawnAnchors.add(key);
+      drawLine(svg, anchorCx, stubStartY, anchorCx, familyDropY, '#7bc8a8');
+    }
+
+    const blockLeft = cursor;
+    // Children layout left-to-right in their reserved block space
+    // Spouse anchor only controls the vertical line, not horizontal positioning
+    const childBlockLeft = blockLeft;
+    
+    const childCenters = [];
+    let childCursor = childBlockLeft;
+    blk.children.forEach((child, ci) => {
+      const childCx = childCursor + NODE_W / 2;
+      childCenters.push(childCx);
+      childCursor += NODE_W + GAP_X;
+    });
+
+    const firstCx = blk.children.length ? childCenters[0] : blockLeft + blk.childrenWidth / 2;
+    const lastCx = blk.children.length ? childCenters[childCenters.length - 1] : blockLeft + blk.childrenWidth / 2;
+
+    if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
+    if (blk.children.length && anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
+    else if (blk.children.length && anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
+
+    childCursor = childBlockLeft;
+    blk.children.forEach((child, ci) => {
+      const childCx = childCursor + NODE_W / 2;
+      placeNode(child, childCx, Y_CH);
+      drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
+      childPositions.push({ person: child, cx: childCx, y: Y_CH });
+      childCursor += NODE_W + GAP_X;
+    });
+
+    placedBlocks.push({ firstCx, lastCx, familyDropY });
+    cursor += blockWidth + FAM_GAP;
+  });
+
+  return childPositions;
+}
 
   // ── Update state ──────────────────────────────────────────
   currentRootId = ancestorTree.person.id;
@@ -652,3 +890,4 @@ function initSearch() {
     }
   });
 }
+
