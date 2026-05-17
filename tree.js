@@ -48,6 +48,7 @@ let DE; // deaths:       {person_id: [y, m, d]}
 
 let currentRootId = null;
 let currentMode = 'ancestors';
+let descendantGenerationLimit = null;
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
@@ -273,10 +274,14 @@ function buildFamilyGroups(personId) {
 
 const DESCENDANT_LAYOUT_CACHE = new Map();
 
-function computeDescendantDepth(personId) {
+function resolveDescendantGenerationLimit() {
+  return descendantGenerationLimit == null ? Infinity : Math.max(1, descendantGenerationLimit);
+}
+
+function computeDescendantDepth(personId, maxDepth = Infinity) {
   let depth = 0;
   let queue = [personId];
-  while (queue.length) {
+  while (queue.length && depth < maxDepth) {
     const next = [];
     for (const id of queue) {
       const families = buildFamilyGroups(id);
@@ -291,16 +296,17 @@ function computeDescendantDepth(personId) {
   return depth;
 }
 
-function computeDescendantLayout(personId) {
-  if (DESCENDANT_LAYOUT_CACHE.has(personId)) return DESCENDANT_LAYOUT_CACHE.get(personId);
+function computeDescendantLayout(personId, remainingGenerations = Infinity) {
+  const cacheKey = `${personId}:${remainingGenerations === Infinity ? 'all' : remainingGenerations}`;
+  if (DESCENDANT_LAYOUT_CACHE.has(cacheKey)) return DESCENDANT_LAYOUT_CACHE.get(cacheKey);
 
   const families = buildFamilyGroups(personId);
-  if (!families.length) {
+  if (!families.length || remainingGenerations <= 0) {
     const layout = {
       width: NODE_W,
       rootOffset: NODE_W / 2,
     };
-    DESCENDANT_LAYOUT_CACHE.set(personId, layout);
+    DESCENDANT_LAYOUT_CACHE.set(cacheKey, layout);
     return layout;
   }
 
@@ -312,7 +318,7 @@ function computeDescendantLayout(personId) {
   const anchorOffsets = [...leftSpouseOffsets.map(o => o / 2), ...rightSpouseOffsets.map(o => o / 2)];
 
   const familyBlocks = orderedFams.map((fam, fi) => {
-    const childLayouts = fam.children.map(c => computeDescendantLayout(c.id));
+    const childLayouts = fam.children.map(c => computeDescendantLayout(c.id, remainingGenerations - 1));
     const childrenWidth = childLayouts.length
       ? childLayouts.reduce((sum, l) => sum + l.width, 0) + (childLayouts.length - 1) * GAP_X
       : NODE_W;
@@ -361,12 +367,12 @@ function computeDescendantLayout(personId) {
   const rootOffset = -minX;
 
   const layout = { width, rootOffset };
-  DESCENDANT_LAYOUT_CACHE.set(personId, layout);
+  DESCENDANT_LAYOUT_CACHE.set(cacheKey, layout);
   return layout;
 }
 
 function computeDescendantWidth(personId) {
-  return computeDescendantLayout(personId).width;
+  return computeDescendantLayout(personId, resolveDescendantGenerationLimit()).width;
 }
 
 // ── Layout helpers ───────────────────────────────────────────
@@ -478,8 +484,9 @@ function renderTree(tree) {
   const childModeBelowWidth = childModeBlockWidths.length > 0
     ? childModeBlockWidths.reduce((s,w) => s + w, 0) + (childModeBlockWidths.length - 1) * FAM_GAP
     : 0;
+  const descendantLimit = resolveDescendantGenerationLimit();
   const descendantLayout = currentMode === 'descendants'
-    ? computeDescendantLayout(ancestorTree.person.id)
+    ? computeDescendantLayout(ancestorTree.person.id, descendantLimit)
     : null;
   const belowWidth = descendantLayout ? descendantLayout.width : childModeBelowWidth;
   const belowLeftNeeded = descendantLayout ? descendantLayout.rootOffset : belowWidth / 2;
@@ -516,7 +523,7 @@ function renderTree(tree) {
     rootCx + belowRightNeeded + MARGIN,
   ));
   const descendantDepth = currentMode === 'descendants'
-    ? computeDescendantDepth(ancestorTree.person.id)
+    ? computeDescendantDepth(ancestorTree.person.id, descendantLimit)
     : (hasAncChildren ? 1 : 0);
   const canvasH = Y_ROOT
     + (descendantDepth + 1) * ROW_H
@@ -583,7 +590,7 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (currentMode === 'descendants') {
-    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN);
+    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, descendantLimit);
   } else {
     renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, childModeBelowWidth, MARGIN);
   }
@@ -640,24 +647,28 @@ function renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famB
   });
 }
 
-function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN) {
+function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, maxGenerations) {
+  if (maxGenerations <= 0) return;
   const rootFamilies = orderedFams.filter(Boolean);
-  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, false, MARGIN);
+  let depth = 1;
+  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, false, MARGIN, maxGenerations);
 
-  while (queue.length) {
+  while (queue.length && depth < maxGenerations) {
+    depth += 1;
     const nextQueue = [];
     for (const { person, cx, y } of queue) {
       const families = buildFamilyGroups(person.id).filter(Boolean);
       if (!families.length) continue;
-      nextQueue.push(...renderDescendantParent(svg, person, cx, y, families, true, MARGIN));
+      const remainingGenerations = maxGenerations - depth + 1;
+      nextQueue.push(...renderDescendantParent(svg, person, cx, y, families, true, MARGIN, remainingGenerations));
     }
     queue = nextQueue;
   }
 }
 
-function renderDescendantParent(svg, parent, parentCx, parentY, families, renderSpouses, MARGIN) {
+function renderDescendantParent(svg, parent, parentCx, parentY, families, renderSpouses, MARGIN, remainingGenerations) {
   families = (families || []).filter(Boolean);
-  if (!families.length) return [];
+  if (!families.length || remainingGenerations <= 0) return [];
 
   const Y_CH = parentY + ROW_H;
   const baseDropY = parentY + ROW_H - 16;
@@ -692,7 +703,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
   const famBlocks = orderedFams.map((fam, fi) => {
     const children = Array.isArray(fam.children) ? fam.children : [];
-    const childLayouts = children.map(child => computeDescendantLayout(child.id));
+    const childLayouts = children.map(child => computeDescendantLayout(child.id, remainingGenerations - 1));
     const childrenWidth = childLayouts.length
       ? childLayouts.reduce((sum, l) => sum + l.width, 0) + (childLayouts.length - 1) * GAP_X
       : NODE_W;
@@ -772,6 +783,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
   document.getElementById('crumb').textContent =
     formatName(ancestorTree.person.given, ancestorTree.person.patronymic,
                ancestorTree.person.surname, ancestorTree.person.maiden);
+  updateDescendantLimitControl(currentRootId);
 
   const newHash = `#${currentRootId}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
@@ -829,11 +841,52 @@ function navigate(id) {
   renderTree(buildTree(id));
 }
 
+function updateDescendantLimitControl(rootId) {
+  const control = document.getElementById('descendant-limit-control');
+  const options = document.getElementById('descendant-limit-options');
+  if (!control || !options) return;
+
+  control.style.display = currentMode === 'descendants' ? 'flex' : 'none';
+
+  const maxDepth = computeDescendantDepth(rootId);
+  const nextValue = descendantGenerationLimit == null || maxDepth <= 0
+    ? 'all'
+    : String(Math.min(descendantGenerationLimit, maxDepth));
+
+  options.innerHTML = '';
+
+  function addLimitButton(value, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = [
+      'generation-limit-btn',
+      value === nextValue ? 'generation-limit-btn-active' : '',
+    ].filter(Boolean).join(' ');
+    button.dataset.limit = value;
+    button.textContent = label;
+    button.setAttribute('aria-pressed', value === nextValue ? 'true' : 'false');
+    button.addEventListener('click', () => {
+      descendantGenerationLimit = value === 'all' ? null : Number(value);
+      if (currentRootId) renderTree(buildTree(currentRootId));
+    });
+    options.appendChild(button);
+  }
+
+  addLimitButton('all', 'Усе');
+
+  for (let generation = 1; generation <= maxDepth; generation += 1) {
+    addLimitButton(String(generation), String(generation));
+  }
+
+  if (nextValue !== 'all') descendantGenerationLimit = Number(nextValue);
+}
+
 function setMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.mode-btn').forEach(b => {
     b.classList.toggle('mode-btn-active', b.dataset.mode === mode);
   });
+  if (currentRootId) updateDescendantLimitControl(currentRootId);
   if (currentRootId) renderTree(buildTree(currentRootId));
 }
 

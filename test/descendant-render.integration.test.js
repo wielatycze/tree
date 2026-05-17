@@ -7,6 +7,7 @@ const TreeLayout = require('../tree-layout');
 
 const NODE_W = 152;
 const NODE_H = 88;
+const ROW_H = 168;
 
 class FakeElement {
   constructor(tag, id = null) {
@@ -94,7 +95,7 @@ function ancestorsOf(rootId, parentsByChild) {
   return seen;
 }
 
-async function renderTreeFixture(rootId, mode = 'descendants') {
+async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit = null) {
   const elements = new Map();
   const elementById = id => {
     if (!elements.has(id)) elements.set(id, new FakeElement('div', id));
@@ -119,6 +120,8 @@ async function renderTreeFixture(rootId, mode = 'descendants') {
     'detail-close',
     'search-input',
     'search-results',
+    'descendant-limit-control',
+    'descendant-limit-options',
   ].forEach(elementById);
 
   const modeButtons = [new FakeElement('button'), new FakeElement('button')];
@@ -157,7 +160,8 @@ async function renderTreeFixture(rootId, mode = 'descendants') {
 
   const source = fs
     .readFileSync(path.join(process.cwd(), 'tree.js'), 'utf8')
-    .replace("let currentMode = 'ancestors';", `let currentMode = '${mode}';`);
+    .replace("let currentMode = 'ancestors';", `let currentMode = '${mode}';`)
+    .replace('let descendantGenerationLimit = null;', `let descendantGenerationLimit = ${descendantLimit == null ? 'null' : descendantLimit};`);
 
   vm.runInNewContext(source, context, { filename: 'tree.js' });
   await new Promise(resolve => setTimeout(resolve, 25));
@@ -177,7 +181,13 @@ async function renderTreeFixture(rootId, mode = 'descendants') {
     ? svg.children.filter(child => child.tag === 'line')
     : [];
 
-  return { nodes, lines, canvas };
+  return {
+    nodes,
+    lines,
+    canvas,
+    descendantLimitControl: elementById('descendant-limit-control'),
+    descendantLimitOptions: elementById('descendant-limit-options'),
+  };
 }
 
 function renderDescendantFixture(rootId) {
@@ -205,6 +215,56 @@ describe('Descendant mode real render', function() {
       descendantMarriageLines.length > 0,
       'expected dashed marriage lines for spouses in descendant generations'
     );
+  });
+
+  it('shows a descendants generation selector with all selected by default', async function() {
+    const { descendantLimitControl, descendantLimitOptions } = await renderDescendantFixture(11083);
+    const buttons = descendantLimitOptions.children;
+    const buttonValues = buttons.map(button => button.dataset.limit);
+    const activeButton = buttons.find(button => button.className.includes('generation-limit-btn-active'));
+
+    assert.strictEqual(descendantLimitControl.style.display, 'flex');
+    assert.ok(buttonValues.includes('all'), 'expected the all option to be present');
+    assert.ok(buttonValues.includes('1'), 'expected the minimum generation limit to be 1');
+    assert.ok(activeButton, 'expected one active generation button');
+    assert.strictEqual(activeButton.dataset.limit, 'all');
+    assert.strictEqual(activeButton.textContent, 'Усе');
+    assert.strictEqual(activeButton.attributes['aria-pressed'], 'true');
+  });
+
+  it('hides the descendants generation selector outside descendants mode', async function() {
+    const { descendantLimitControl } = await renderTreeFixture(11083, 'ancestors');
+
+    assert.strictEqual(descendantLimitControl.style.display, 'none');
+  });
+
+  it('limits descendants mode to one descendant generation', async function() {
+    const { nodes, descendantLimitOptions } = await renderTreeFixture(11083, 'descendants', 1);
+    const root = nodes.find(node => node.className.includes('is-root'));
+    const maxTop = Math.max(...nodes.map(node => node.top));
+    const activeButton = descendantLimitOptions.children.find(button => button.className.includes('generation-limit-btn-active'));
+
+    assert.strictEqual(activeButton.dataset.limit, '1');
+    assert.ok(root, 'expected the root node to be rendered');
+    assert.ok(maxTop <= root.top + ROW_H, 'expected no nodes below the children generation');
+  });
+
+  it('allows a numeric descendants limit greater than one', async function() {
+    const rootId = 748;
+    const limited = await renderTreeFixture(rootId, 'descendants', 2);
+    const all = await renderDescendantFixture(rootId);
+    const root = limited.nodes.find(node => node.className.includes('is-root'));
+    const allRoot = all.nodes.find(node => node.className.includes('is-root'));
+    const maxLimitedTop = Math.max(...limited.nodes.map(node => node.top));
+    const maxAllTop = Math.max(...all.nodes.map(node => node.top));
+
+    const activeButton = limited.descendantLimitOptions.children.find(button => button.className.includes('generation-limit-btn-active'));
+
+    assert.strictEqual(activeButton.dataset.limit, '2');
+    assert.ok(root, 'expected the root node to be rendered');
+    assert.ok(allRoot, 'expected the root node to be rendered in all mode');
+    assert.ok(maxLimitedTop <= root.top + 2 * ROW_H, 'expected no nodes below the second descendant generation');
+    assert.ok(maxAllTop - allRoot.top > 2 * ROW_H, 'expected all mode to render deeper generations');
   });
 
   it('does not overlap rendered people for wide real descendant trees', async function() {
