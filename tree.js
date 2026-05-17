@@ -302,17 +302,24 @@ function computeDescendantLayout(personId) {
     return layout;
   }
 
-  const familyBlocks = families.map(fam => {
+  const orderedFams = families.length > 1 ? [families[0], ...families.slice(1)] : families;
+  const leftFams = families.length > 1 ? [families[0]] : [];
+  const rightFams = families.length > 1 ? families.slice(1) : families;
+  const leftSpouseOffsets = leftFams.map((_, i) => -(NODE_W / 2 + SP_GAP + NODE_W / 2 + i * (NODE_W + SP_GAP)));
+  const rightSpouseOffsets = rightFams.map((_, i) => NODE_W / 2 + SP_GAP + NODE_W / 2 + i * (NODE_W + SP_GAP));
+  const anchorOffsets = [...leftSpouseOffsets.map(o => o / 2), ...rightSpouseOffsets.map(o => o / 2)];
+
+  const familyBlocks = orderedFams.map((fam, fi) => {
     const childLayouts = fam.children.map(c => computeDescendantLayout(c.id));
-    // In descendant mode, each generation renders at separate Y level
-    // so only reserve space for immediate sibling widths (NODE_W each), not recursive descendants
     const childrenWidth = childLayouts.length
-      ? childLayouts.length * NODE_W + (childLayouts.length - 1) * GAP_X
+      ? childLayouts.reduce((sum, l) => sum + l.width, 0) + (childLayouts.length - 1) * GAP_X
       : NODE_W;
     const spouseSpan = fam.spouse ? NODE_W + SP_GAP + NODE_W : NODE_W;
     const blockWidth = Math.max(childrenWidth, spouseSpan, NODE_W);
     return {
       fam,
+      fi,
+      children: fam.children,
       childLayouts,
       childrenWidth,
       blockWidth,
@@ -324,10 +331,32 @@ function computeDescendantLayout(personId) {
     ? familyBlocks.reduce((sum, b) => sum + b.blockWidth, 0) + (familyBlocks.length - 1) * FAM_GAP
     : NODE_W;
 
-  const width = Math.max(totalFamilyWidth, NODE_W);
-  const rootOffset = familyBlocks.length === 1 && familyBlocks[0].hasSpouse
-    ? NODE_W / 2
-    : width / 2;
+  const anchorOffset = familyBlocks.length === 1 && familyBlocks[0].hasSpouse
+    ? anchorOffsets[familyBlocks[0].fi]
+    : 0;
+  const childrenStart = anchorOffset - totalFamilyWidth / 2;
+  let cursor = childrenStart;
+  let minX = -NODE_W / 2;
+  let maxX = NODE_W / 2;
+
+  leftSpouseOffsets.forEach(offset => {
+    minX = Math.min(minX, offset - NODE_W / 2);
+    maxX = Math.max(maxX, offset + NODE_W / 2);
+  });
+  rightSpouseOffsets.forEach(offset => {
+    minX = Math.min(minX, offset - NODE_W / 2);
+    maxX = Math.max(maxX, offset + NODE_W / 2);
+  });
+
+  familyBlocks.forEach(block => {
+    block.left = cursor;
+    minX = Math.min(minX, cursor);
+    maxX = Math.max(maxX, cursor + block.blockWidth);
+    cursor += block.blockWidth + FAM_GAP;
+  });
+
+  const width = maxX - minX;
+  const rootOffset = -minX;
 
   const layout = { width, rootOffset };
   DESCENDANT_LAYOUT_CACHE.set(personId, layout);
@@ -443,10 +472,16 @@ function renderTree(tree) {
     return aAnchor - bAnchor || birthYear(A.children[0]) - birthYear(B.children[0]);
   });
 
-  const blockWidths = famBlocks.map(b => b.children.length * (NODE_W + GAP_X) - GAP_X);
-  const belowWidth = blockWidths.length > 0
-    ? blockWidths.reduce((s,w) => s + w, 0) + (blockWidths.length - 1) * FAM_GAP
+  const childModeBlockWidths = famBlocks.map(b => b.children.length * (NODE_W + GAP_X) - GAP_X);
+  const childModeBelowWidth = childModeBlockWidths.length > 0
+    ? childModeBlockWidths.reduce((s,w) => s + w, 0) + (childModeBlockWidths.length - 1) * FAM_GAP
     : 0;
+  const descendantLayout = currentMode === 'descendants'
+    ? computeDescendantLayout(ancestorTree.person.id)
+    : null;
+  const belowWidth = descendantLayout ? descendantLayout.width : childModeBelowWidth;
+  const belowLeftNeeded = descendantLayout ? descendantLayout.rootOffset : belowWidth / 2;
+  const belowRightNeeded = descendantLayout ? descendantLayout.width - descendantLayout.rootOffset : belowWidth / 2;
 
   // ── Resolve rootCx ────────────────────────────────────────
   const leftSpouseNeeded = leftSpouseOffsets.length
@@ -455,7 +490,7 @@ function renderTree(tree) {
 
   const rootCxRaw = Math.max(
     MARGIN + leftSpouseNeeded,
-    MARGIN + belowWidth / 2,
+    MARGIN + belowLeftNeeded,
     MARGIN + ancestorW / 2,
   );
 
@@ -476,10 +511,13 @@ function renderTree(tree) {
   const canvasW = Math.ceil(Math.max(
     maxAncCx + NODE_W/2 + MARGIN,
     rootCx + rightSpouseNeeded + MARGIN,
-    rootCx + belowWidth/2 + MARGIN,
+    rootCx + belowRightNeeded + MARGIN,
   ));
+  const descendantDepth = currentMode === 'descendants'
+    ? computeDescendantDepth(ancestorTree.person.id)
+    : (hasAncChildren ? 1 : 0);
   const canvasH = Y_ROOT
-    + (hasAncChildren ? 2 : 1) * ROW_H
+    + (descendantDepth + 1) * ROW_H
     + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
@@ -543,9 +581,9 @@ function renderTree(tree) {
 
   // ── Below root: draw children grouped by family ────────────
   if (currentMode === 'descendants') {
-    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN);
+    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN);
   } else {
-    renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN);
+    renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, childModeBelowWidth, MARGIN);
   }
 
 function renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN) {
@@ -600,7 +638,7 @@ function renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famB
   });
 }
 
-function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN) {
+function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN) {
   const rootFamilies = orderedFams.filter(Boolean);
   let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, false, MARGIN);
 
@@ -653,7 +691,6 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
   const famBlocks = orderedFams.map((fam, fi) => {
     const children = Array.isArray(fam.children) ? fam.children : [];
     const childLayouts = children.map(child => computeDescendantLayout(child.id));
-    // Each child block = its full recursive subtree width
     const childrenWidth = childLayouts.length
       ? childLayouts.reduce((sum, l) => sum + l.width, 0) + (childLayouts.length - 1) * GAP_X
       : NODE_W;
@@ -694,16 +731,14 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     }
 
     const blockLeft = cursor;
-    // Children layout left-to-right in their reserved block space
-    // Spouse anchor only controls the vertical line, not horizontal positioning
-    const childBlockLeft = blockLeft;
+    const childBlockLeft = blockLeft + Math.max(0, (blockWidth - blk.childrenWidth) / 2);
     
     const childCenters = [];
     let childCursor = childBlockLeft;
     blk.children.forEach((child, ci) => {
-      const childCx = childCursor + NODE_W / 2;
+      const childCx = childCursor + blk.childLayouts[ci].rootOffset;
       childCenters.push(childCx);
-      childCursor += NODE_W + GAP_X;
+      childCursor += blk.childLayouts[ci].width + GAP_X;
     });
 
     const firstCx = blk.children.length ? childCenters[0] : blockLeft + blk.childrenWidth / 2;
@@ -715,14 +750,15 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
     childCursor = childBlockLeft;
     blk.children.forEach((child, ci) => {
-      const childCx = childCursor + NODE_W / 2;
+      const childLayout = blk.childLayouts[ci];
+      const childCx = childCursor + childLayout.rootOffset;
       placeNode(child, childCx, Y_CH);
       drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
       childPositions.push({ person: child, cx: childCx, y: Y_CH });
-      childCursor += NODE_W + GAP_X;
+      childCursor += childLayout.width + GAP_X;
     });
 
-    placedBlocks.push({ firstCx, lastCx, familyDropY });
+    placedBlocks.push({ firstCx: blockLeft, lastCx: blockLeft + blockWidth, familyDropY });
     cursor += blockWidth + FAM_GAP;
   });
 

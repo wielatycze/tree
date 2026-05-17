@@ -118,18 +118,35 @@ describe('Descendant mode line connections', function() {
     assert.ok(lineStart > lineEnd, 'familyDropY should be below childY (higher Y coordinate)');
   });
 
-  it('descendant mode reserves NODE_W per child at each generation level only', function() {
-    // Descendants are rendered at different Y levels, so horizontal spacing only needs NODE_W per child
-    // This is the same as children mode spacing
-    
-    // For 4 children at a generation level:
-    // Space needed = 4 * NODE_W + 3 * GAP_X = 4 * 152 + 3 * 20 = 668px
-    // (NOT including recursive descendant widths, which are rendered at lower Y levels)
-    
-    const childrenCount = 4;
-    const expectedWidth = childrenCount * NODE_W + (childrenCount - 1) * GAP_X;
-    
-    assert.strictEqual(expectedWidth, 668, 'Space for 4 children should be 668px at each generation level');
+  it('descendant mode reserves each child full recursive subtree width', function() {
+    const childSubtreeWidths = [NODE_W, 500, 320, NODE_W];
+    const expectedWidth = childSubtreeWidths.reduce((sum, width) => sum + width, 0)
+      + (childSubtreeWidths.length - 1) * GAP_X;
+
+    assert.strictEqual(expectedWidth, 1184, 'Sibling spacing must include descendant subtree widths');
+    assert.ok(
+      expectedWidth > childSubtreeWidths.length * NODE_W + (childSubtreeWidths.length - 1) * GAP_X,
+      'Recursive descendant layouts need more space than one card per child'
+    );
+  });
+
+  it('child centers use their subtree root offsets inside reserved blocks', function() {
+    const childLayouts = [
+      { width: 500, rootOffset: 250 },
+      { width: 320, rootOffset: 76 },
+    ];
+    const blockLeft = 100;
+
+    const firstChildCx = blockLeft + childLayouts[0].rootOffset;
+    const secondChildLeft = blockLeft + childLayouts[0].width + GAP_X;
+    const secondChildCx = secondChildLeft + childLayouts[1].rootOffset;
+
+    assert.strictEqual(firstChildCx, 350);
+    assert.strictEqual(secondChildCx, 696);
+    assert.ok(
+      blockLeft + childLayouts[0].width + GAP_X <= secondChildLeft,
+      'Second subtree starts after the first subtree reservation plus the sibling gap'
+    );
   });
 
   it('single spouse family uses NODE_W + SP_GAP + NODE_W spacing', function() {
