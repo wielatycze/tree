@@ -76,7 +76,25 @@ function descendantsOf(rootId, childrenByParent) {
   return seen;
 }
 
-async function renderDescendantFixture(rootId) {
+function ancestorsOf(rootId, parentsByChild) {
+  const seen = new Set([String(rootId)]);
+  const queue = [String(rootId)];
+
+  while (queue.length) {
+    const id = queue.shift();
+    for (const parentId of parentsByChild[id] || []) {
+      if (!parentId) continue;
+      const key = String(parentId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push(key);
+    }
+  }
+
+  return seen;
+}
+
+async function renderTreeFixture(rootId, mode = 'descendants') {
   const elements = new Map();
   const elementById = id => {
     if (!elements.has(id)) elements.set(id, new FakeElement('div', id));
@@ -139,7 +157,7 @@ async function renderDescendantFixture(rootId) {
 
   const source = fs
     .readFileSync(path.join(process.cwd(), 'tree.js'), 'utf8')
-    .replace("let currentMode = 'ancestors';", "let currentMode = 'descendants';");
+    .replace("let currentMode = 'ancestors';", `let currentMode = '${mode}';`);
 
   vm.runInNewContext(source, context, { filename: 'tree.js' });
   await new Promise(resolve => setTimeout(resolve, 25));
@@ -160,6 +178,10 @@ async function renderDescendantFixture(rootId) {
     : [];
 
   return { nodes, lines, canvas };
+}
+
+function renderDescendantFixture(rootId) {
+  return renderTreeFixture(rootId, 'descendants');
 }
 
 describe('Descendant mode real render', function() {
@@ -227,6 +249,32 @@ describe('Descendant mode real render', function() {
         node.left + NODE_W <= canvasWidth,
         `expected person ${node.id} not to render beyond canvas width`
       );
+    }
+  });
+
+  it('renders every known ancestor in ancestors mode without a generation cap', async function() {
+    const rootId = 18157;
+    const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
+    const expectedAncestors = ancestorsOf(rootId, parentsByChild);
+    const { nodes } = await renderTreeFixture(rootId, 'ancestors');
+    const renderedPeople = new Set(nodes.map(node => node.id));
+
+    assert.ok(expectedAncestors.size > 64, 'fixture should exercise more than four ancestor generations');
+    for (const id of expectedAncestors) {
+      assert.ok(renderedPeople.has(id), `expected ancestor person ${id} to render in ancestors mode`);
+    }
+  });
+
+  it('renders every known ancestor in descendants mode without a generation cap', async function() {
+    const rootId = 18157;
+    const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
+    const expectedAncestors = ancestorsOf(rootId, parentsByChild);
+    const { nodes } = await renderTreeFixture(rootId, 'descendants');
+    const renderedPeople = new Set(nodes.map(node => node.id));
+
+    assert.ok(expectedAncestors.size > 64, 'fixture should exercise more than four ancestor generations');
+    for (const id of expectedAncestors) {
+      assert.ok(renderedPeople.has(id), `expected ancestor person ${id} to render in descendants mode`);
     }
   });
 });

@@ -131,17 +131,19 @@ function buildPerson(id) {
  * Recursively build an ancestor subtree node.
  * Each node: { person, father, mother } (father/mother are ancestor nodes or null).
  */
-const MAX_ANCESTOR_GENERATIONS = 4;
-
-function buildAncestorNode(id, depth) {
-  if (!id || depth >= MAX_ANCESTOR_GENERATIONS) return null;
+function buildAncestorNode(id, seen = new Set()) {
+  if (!id) return null;
+  const key = String(id);
+  if (seen.has(key)) return null;
   const person = buildPerson(id);
   if (!person) return null;
+  const nextSeen = new Set(seen);
+  nextSeen.add(key);
   const [fatherId, motherId] = PA[id] || [null, null];
   return {
     person,
-    father: buildAncestorNode(fatherId, depth + 1),
-    mother: buildAncestorNode(motherId, depth + 1),
+    father: buildAncestorNode(fatherId, nextSeen),
+    mother: buildAncestorNode(motherId, nextSeen),
   };
 }
 
@@ -188,8 +190,8 @@ function buildTree(rootId) {
   const [fatherId, motherId] = PA[rootId] || [null, null];
   const ancestorTree = {
     person: root,
-    father: buildAncestorNode(fatherId, 0),
-    mother: buildAncestorNode(motherId, 0),
+    father: buildAncestorNode(fatherId, new Set([String(rootId)])),
+    mother: buildAncestorNode(motherId, new Set([String(rootId)])),
   };
 
   const families = (MA[rootId] || []).map(([spouseId, marriageDate, childIds]) => {
