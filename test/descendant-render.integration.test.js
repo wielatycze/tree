@@ -73,6 +73,20 @@ function horizontalSegmentsOverlap(a, b) {
   return Math.max(aLeft, bLeft) < Math.min(aRight, bRight);
 }
 
+function verticalCrossesHorizontal(vertical, horizontal) {
+  const x = lineNumber(vertical, 'x1');
+  const y = lineNumber(horizontal, 'y1');
+  const verticalTop = Math.min(lineNumber(vertical, 'y1'), lineNumber(vertical, 'y2'));
+  const verticalBottom = Math.max(lineNumber(vertical, 'y1'), lineNumber(vertical, 'y2'));
+  const horizontalLeft = Math.min(lineNumber(horizontal, 'x1'), lineNumber(horizontal, 'x2'));
+  const horizontalRight = Math.max(lineNumber(horizontal, 'x1'), lineNumber(horizontal, 'x2'));
+
+  return x > horizontalLeft &&
+    x < horizontalRight &&
+    y > verticalTop &&
+    y < verticalBottom;
+}
+
 function descendantsOf(rootId, childrenByParent) {
   const seen = new Set([String(rootId)]);
   const queue = [String(rootId)];
@@ -335,6 +349,30 @@ describe('Descendant mode real render', function() {
           assert.ok(
             !horizontalSegmentsOverlap(a, b),
             `expected child connector horizontals not to overlap for root ${rootId} at y=${lineNumber(a, 'y1')}`
+          );
+        }
+      }
+    }
+  });
+
+  it('keeps child-family connector verticals from crossing horizontals', async function() {
+    for (const rootId of [1964, 1160, 11083, 748, 508, 1658]) {
+      const { lines } = await renderTreeFixture(rootId, 'descendants');
+      const childLines = lines.filter(line => line.attributes.stroke === '#7bc8a8');
+      const verticals = childLines.filter(line =>
+        lineNumber(line, 'x1') === lineNumber(line, 'x2') &&
+        lineNumber(line, 'y1') !== lineNumber(line, 'y2')
+      );
+      const horizontals = childLines.filter(line =>
+        lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+        lineNumber(line, 'x1') !== lineNumber(line, 'x2')
+      );
+
+      for (const vertical of verticals) {
+        for (const horizontal of horizontals) {
+          assert.ok(
+            !verticalCrossesHorizontal(vertical, horizontal),
+            `expected child connector verticals not to cross horizontals for root ${rootId}`
           );
         }
       }

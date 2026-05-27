@@ -275,6 +275,12 @@ function familyOldestChildYear(fam) {
     : 9999;
 }
 
+function orderFamiliesForDescendants(families) {
+  return families.slice().sort((a, b) =>
+    familyOldestChildYear(a) - familyOldestChildYear(b)
+  );
+}
+
 function orderChildFamilyBlocks(blocks) {
   return blocks
     .filter(block => block.children.length > 0)
@@ -288,23 +294,75 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
 }
 
+function pointInsideRange(point, start, end) {
+  return point > Math.min(start, end) && point < Math.max(start, end);
+}
+
 function assignConnectorLanes(blocks) {
-  const laneRanges = [];
+  const constraints = [];
 
-  for (let i = blocks.length - 1; i >= 0; i -= 1) {
-    const block = blocks[i];
-    let lane = 0;
-
-    while ((laneRanges[lane] || []).some(range =>
-      rangesOverlap(block.horizontalLeft, block.horizontalRight, range.left, range.right)
-    )) {
-      lane += 1;
-    }
-
-    block.connectorLane = lane;
-    if (!laneRanges[lane]) laneRanges[lane] = [];
-    laneRanges[lane].push({ left: block.horizontalLeft, right: block.horizontalRight });
+  function addConstraint(higherIndex, lowerIndex) {
+    if (higherIndex === lowerIndex) return;
+    constraints.push([higherIndex, lowerIndex]);
   }
+
+  blocks.forEach((block, blockIndex) => {
+    blocks.forEach((other, otherIndex) => {
+      if (blockIndex === otherIndex) return;
+
+      if (pointInsideRange(block.anchorCx, other.horizontalLeft, other.horizontalRight)) {
+        addConstraint(blockIndex, otherIndex);
+      }
+
+      if (block.childCenters.some(childCx =>
+        pointInsideRange(childCx, other.horizontalLeft, other.horizontalRight)
+      )) {
+        addConstraint(otherIndex, blockIndex);
+      }
+    });
+  });
+
+  function hasPath(fromIndex, toIndex, seen = new Set()) {
+    if (fromIndex === toIndex) return true;
+    if (seen.has(fromIndex)) return false;
+    seen.add(fromIndex);
+
+    return constraints.some(([higherIndex, lowerIndex]) =>
+      higherIndex === fromIndex && hasPath(lowerIndex, toIndex, seen)
+    );
+  }
+
+  blocks.forEach((block, blockIndex) => {
+    blocks.forEach((other, otherIndex) => {
+      if (blockIndex >= otherIndex) return;
+      if (!rangesOverlap(block.horizontalLeft, block.horizontalRight, other.horizontalLeft, other.horizontalRight)) return;
+
+      if (hasPath(otherIndex, blockIndex)) {
+        addConstraint(otherIndex, blockIndex);
+      } else {
+        addConstraint(blockIndex, otherIndex);
+      }
+    });
+  });
+
+  const lanes = blocks.map(() => 0);
+
+  for (let pass = 0; pass < constraints.length; pass += 1) {
+    let changed = false;
+
+    constraints.forEach(([higherIndex, lowerIndex]) => {
+      if (lanes[higherIndex] <= lanes[lowerIndex]) {
+        lanes[higherIndex] = lanes[lowerIndex] + 1;
+        changed = true;
+      }
+    });
+
+    if (!changed) break;
+  }
+
+  blocks.forEach((block, index) => {
+    block.connectorLane = lanes[index];
+  });
 }
 
 const DESCENDANT_LAYOUT_CACHE = new Map();
@@ -335,7 +393,7 @@ function computeDescendantLayout(personId, remainingGenerations = Infinity) {
   const cacheKey = `${personId}:${remainingGenerations === Infinity ? 'all' : remainingGenerations}`;
   if (DESCENDANT_LAYOUT_CACHE.has(cacheKey)) return DESCENDANT_LAYOUT_CACHE.get(cacheKey);
 
-  const families = buildFamilyGroups(personId);
+  const families = orderFamiliesForDescendants(buildFamilyGroups(personId));
   if (!families.length || remainingGenerations <= 0) {
     const layout = {
       width: NODE_W,
@@ -469,6 +527,9 @@ function renderTree(tree) {
   canvas.innerHTML = '';
 
   const { ancestorTree, families } = tree;
+  const visualFamilies = currentMode === 'descendants'
+    ? orderFamiliesForDescendants(families)
+    : families;
 
   // ── Ancestor depth & Y_ROOT ───────────────────────────────
   const actualDepth = (function maxDepth(node) {
@@ -485,8 +546,8 @@ function renderTree(tree) {
   const STAGGER = 22;
   const MARGIN  = 20;
 
-  const leftFams  = families.length > 1 ? [families[0]] : [];
-  const rightFams = families.length > 1 ? families.slice(1) : families;
+  const leftFams  = visualFamilies.length > 1 ? [visualFamilies[0]] : [];
+  const rightFams = visualFamilies.length > 1 ? visualFamilies.slice(1) : visualFamilies;
 
   const leftSpouseOffsets  = leftFams.map((_,i)  => -(NODE_W/2 + SP_GAP + NODE_W/2 + i*(NODE_W+SP_GAP)));
   const rightSpouseOffsets = rightFams.map((_,i) =>   NODE_W/2 + SP_GAP + NODE_W/2 + i*(NODE_W+SP_GAP));
@@ -623,7 +684,7 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
 }
 
 function renderDescendantParent(svg, parent, parentCx, parentY, families, renderSpouses, MARGIN, remainingGenerations) {
-  families = (families || []).filter(Boolean);
+  families = orderFamiliesForDescendants((families || []).filter(Boolean));
   if (!families.length || remainingGenerations <= 0) return [];
 
   const Y_CH = parentY + ROW_H;
@@ -716,9 +777,14 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
   });
 
   assignConnectorLanes(positionedBlocks);
+  const connectorLaneGap = positionedBlocks.reduce((gap, block) => {
+    if (!block.connectorLane) return gap;
+    return Math.min(gap, (baseDropY - block.stubStartY - 8) / block.connectorLane);
+  }, STAGGER);
+  const effectiveLaneGap = Math.max(4, Math.min(STAGGER, connectorLaneGap));
 
   positionedBlocks.forEach((blk) => {
-    const familyDropY = Math.max(blk.stubStartY + 20, baseDropY - blk.connectorLane * STAGGER);
+    const familyDropY = Math.max(blk.stubStartY + 8, baseDropY - blk.connectorLane * effectiveLaneGap);
     const key = `${blk.anchorCx},${blk.stubStartY},${familyDropY}`;
 
     if (!drawnAnchors.has(key)) {
