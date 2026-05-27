@@ -447,10 +447,21 @@ function renderTree(tree) {
     if (fpos && mpos) {
       drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
       drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
-      drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
       const barMid = (fpos.cx + mpos.cx) / 2;
-      if (Math.abs(barMid - cx) > 0.5) drawLine(svg, barMid, midY, cx, midY, '#999');
-      drawLine(svg, cx, midY, cx, childY, '#999');
+      if (Math.abs(barMid - cx) > 0.5) {
+        const parentLeft = Math.min(fpos.cx, mpos.cx);
+        const parentRight = Math.max(fpos.cx, mpos.cx);
+        const offsetLeft = Math.min(barMid, cx);
+        const offsetRight = Math.max(barMid, cx);
+
+        if (parentLeft < offsetLeft) drawBar(svg, parentLeft, offsetLeft, midY, '#aaa');
+        if (offsetRight < parentRight) drawBar(svg, offsetRight, parentRight, midY, '#aaa');
+        drawLine(svg, barMid, midY, cx, midY, '#999');
+      } else {
+        drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
+        drawLine(svg, cx, midY, cx, childY, '#999');
+      }
+      if (Math.abs(barMid - cx) > 0.5) drawLine(svg, cx, midY, cx, childY, '#999');
     } else {
       const parentCx = fpos ? fpos.cx : mpos.cx;
       const color    = fpos ? '#7ca8d8' : '#d87898';

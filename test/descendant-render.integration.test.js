@@ -495,6 +495,45 @@ describe('Descendant mode real render', function() {
     }
   });
 
+  it('keeps ancestor skew connectors straight without duplicating parent bars', async function() {
+    const { lines } = await renderTreeFixture(10536, 'ancestors');
+    const parentBars = lines.filter(line =>
+      line.attributes.stroke === '#aaa' &&
+      lineNumber(line, 'y1') === lineNumber(line, 'y2')
+    );
+    const offsetHorizontals = lines.filter(line =>
+      line.attributes.stroke === '#999' &&
+      lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+      lineNumber(line, 'x1') !== lineNumber(line, 'x2')
+    );
+    const offsetVerticals = lines.filter(line =>
+      line.attributes.stroke === '#999' &&
+      lineNumber(line, 'x1') === lineNumber(line, 'x2') &&
+      lineNumber(line, 'y1') !== lineNumber(line, 'y2')
+    );
+
+    for (const parentBar of parentBars) {
+      for (const offset of offsetHorizontals) {
+        if (lineNumber(parentBar, 'y1') !== lineNumber(offset, 'y1')) continue;
+
+        assert.ok(
+          !horizontalSegmentsOverlap(parentBar, offset),
+          'expected ancestor skew offset not to overlap the parent bar'
+        );
+      }
+    }
+
+    for (const offset of offsetHorizontals) {
+      assert.ok(
+        offsetVerticals.some(vertical =>
+          lineNumber(vertical, 'x1') === lineNumber(offset, 'x2') &&
+          lineNumber(vertical, 'y1') === lineNumber(offset, 'y1')
+        ),
+        'expected skew offset to continue as a straight vertical line from the same Y'
+      );
+    }
+  });
+
   it('renders every known ancestor in descendants mode without a generation cap', async function() {
     const rootId = 18157;
     const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
