@@ -400,6 +400,23 @@ describe('Descendant mode real render', function() {
     assert.ok(!dogleg, 'expected no horizontal dogleg into the single child');
   });
 
+  it('centers an only child from an only spouse on the family child-drop anchor', async function() {
+    const { nodes, lines } = await renderTreeFixture(235, 'descendants');
+    const root = nodes.find(node => node.id === '235');
+    const child = nodes.find(node => node.id === '15772');
+    const marriageLine = lines.find(line =>
+      line.attributes.stroke === '#bbb' &&
+      line.attributes['stroke-dasharray'] === '5,4' &&
+      lineNumber(line, 'y1') === root.top + NODE_H / 2 &&
+      lineNumber(line, 'y2') === root.top + NODE_H / 2
+    );
+
+    const anchorCx = (lineNumber(marriageLine, 'x1') + lineNumber(marriageLine, 'x2')) / 2;
+    const childCx = child.left + NODE_W / 2;
+
+    assert.strictEqual(childCx, anchorCx);
+  });
+
   it('allows a numeric descendants limit greater than one', async function() {
     const rootId = 748;
     const limited = await renderTreeFixture(rootId, 'descendants', 2);

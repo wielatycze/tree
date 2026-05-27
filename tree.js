@@ -364,6 +364,15 @@ function assignConnectorLanes(blocks) {
   });
 }
 
+function childBlockLeftForFamily(blockLeft, blockWidth, childrenWidth, childLayouts, anchorOffset, allowOverflow = false) {
+  const centeredLeft = blockLeft + Math.max(0, (blockWidth - childrenWidth) / 2);
+  if (childLayouts.length !== 1) return centeredLeft;
+
+  const anchoredLeft = anchorOffset - childLayouts[0].rootOffset;
+  const fitsBlock = anchoredLeft >= blockLeft && anchoredLeft + childrenWidth <= blockLeft + blockWidth;
+  return allowOverflow || fitsBlock ? anchoredLeft : centeredLeft;
+}
+
 const DESCENDANT_LAYOUT_CACHE = new Map();
 
 function resolveDescendantGenerationLimit() {
@@ -450,8 +459,17 @@ function computeDescendantLayout(personId, remainingGenerations = Infinity) {
 
   familyBlocks.forEach(block => {
     block.left = cursor;
-    minX = Math.min(minX, cursor);
-    maxX = Math.max(maxX, cursor + block.blockWidth);
+    const anchorOffsetForBlock = block.hasSpouse ? anchorOffsets[block.fi] : 0;
+    const childBlockLeft = childBlockLeftForFamily(
+      cursor,
+      block.blockWidth,
+      block.childrenWidth,
+      block.childLayouts,
+      anchorOffsetForBlock,
+      familyBlocks.length === 1
+    );
+    minX = Math.min(minX, cursor, childBlockLeft);
+    maxX = Math.max(maxX, cursor + block.blockWidth, childBlockLeft + block.childrenWidth);
     cursor += block.blockWidth + FAM_GAP;
   });
 
@@ -747,13 +765,14 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     const stubStartY = blk.fam.spouse ? parentY + Math.round(NODE_H / 2) : nodeBot(parentY);
 
     const blockLeft = cursor;
-    let childBlockLeft = blockLeft + Math.max(0, (blockWidth - blk.childrenWidth) / 2);
-    if (blk.children.length === 1) {
-      const anchoredLeft = anchorCx - blk.childLayouts[0].rootOffset;
-      if (anchoredLeft >= blockLeft && anchoredLeft + blk.childrenWidth <= blockLeft + blockWidth) {
-        childBlockLeft = anchoredLeft;
-      }
-    }
+    const childBlockLeft = childBlockLeftForFamily(
+      blockLeft,
+      blockWidth,
+      blk.childrenWidth,
+      blk.childLayouts,
+      anchorCx,
+      famBlocks.length === 1
+    );
     const childCenters = [];
     let childCursor = childBlockLeft;
 
