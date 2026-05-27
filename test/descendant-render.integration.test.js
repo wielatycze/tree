@@ -332,7 +332,7 @@ describe('Descendant mode real render', function() {
   });
 
   it('keeps child-family connector horizontals from overlapping', async function() {
-    for (const rootId of [1160, 11083, 748, 508, 1658]) {
+    for (const rootId of [3145, 1160, 11083, 748, 508, 1658]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
       const childHorizontals = lines.filter(line =>
         line.attributes.stroke === '#7bc8a8' &&
@@ -356,7 +356,7 @@ describe('Descendant mode real render', function() {
   });
 
   it('keeps child-family connector verticals from crossing horizontals', async function() {
-    for (const rootId of [1964, 1160, 11083, 748, 508, 1658]) {
+    for (const rootId of [3145, 1964, 1160, 11083, 748, 508, 1658]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
       const childLines = lines.filter(line => line.attributes.stroke === '#7bc8a8');
       const verticals = childLines.filter(line =>
@@ -377,6 +377,27 @@ describe('Descendant mode real render', function() {
         }
       }
     }
+  });
+
+  it('draws a straight connector to a single child when it fits under the family anchor', async function() {
+    const { nodes, lines } = await renderTreeFixture(3145, 'descendants');
+    const child = nodes.find(node => node.id === '4045');
+    const childCx = child.left + NODE_W / 2;
+    const childVertical = lines.find(line =>
+      line.attributes.stroke === '#7bc8a8' &&
+      lineNumber(line, 'x1') === childCx &&
+      lineNumber(line, 'x2') === childCx &&
+      lineNumber(line, 'y2') === child.top
+    );
+    const dogleg = lines.find(line =>
+      line.attributes.stroke === '#7bc8a8' &&
+      lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+      Math.min(lineNumber(line, 'x1'), lineNumber(line, 'x2')) < childCx &&
+      Math.max(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === childCx
+    );
+
+    assert.ok(childVertical, 'expected a vertical connector into the single child');
+    assert.ok(!dogleg, 'expected no horizontal dogleg into the single child');
   });
 
   it('allows a numeric descendants limit greater than one', async function() {

@@ -335,7 +335,6 @@ function assignConnectorLanes(blocks) {
   blocks.forEach((block, blockIndex) => {
     blocks.forEach((other, otherIndex) => {
       if (blockIndex >= otherIndex) return;
-      if (!rangesOverlap(block.horizontalLeft, block.horizontalRight, other.horizontalLeft, other.horizontalRight)) return;
 
       if (hasPath(otherIndex, blockIndex)) {
         addConstraint(otherIndex, blockIndex);
@@ -748,7 +747,13 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     const stubStartY = blk.fam.spouse ? parentY + Math.round(NODE_H / 2) : nodeBot(parentY);
 
     const blockLeft = cursor;
-    const childBlockLeft = blockLeft + Math.max(0, (blockWidth - blk.childrenWidth) / 2);
+    let childBlockLeft = blockLeft + Math.max(0, (blockWidth - blk.childrenWidth) / 2);
+    if (blk.children.length === 1) {
+      const anchoredLeft = anchorCx - blk.childLayouts[0].rootOffset;
+      if (anchoredLeft >= blockLeft && anchoredLeft + blk.childrenWidth <= blockLeft + blockWidth) {
+        childBlockLeft = anchoredLeft;
+      }
+    }
     const childCenters = [];
     let childCursor = childBlockLeft;
 
