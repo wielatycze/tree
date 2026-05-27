@@ -4,6 +4,7 @@ const path = require('path');
 const vm = require('vm');
 
 const TreeLayout = require('../tree-layout');
+const DescendantLayout = require('../descendant-layout');
 
 const NODE_W = 152;
 const NODE_H = 88;
@@ -179,6 +180,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     setTimeout,
     clearTimeout,
     TreeLayout,
+    DescendantLayout,
     window: {
       innerWidth: 1400,
       innerHeight: 900,
