@@ -60,6 +60,19 @@ function numberFromCss(cssText, property) {
   return match ? Number(match[1]) : NaN;
 }
 
+function lineNumber(line, attr) {
+  return Number(line.attributes[attr]);
+}
+
+function horizontalSegmentsOverlap(a, b) {
+  const aLeft = Math.min(lineNumber(a, 'x1'), lineNumber(a, 'x2'));
+  const aRight = Math.max(lineNumber(a, 'x1'), lineNumber(a, 'x2'));
+  const bLeft = Math.min(lineNumber(b, 'x1'), lineNumber(b, 'x2'));
+  const bRight = Math.max(lineNumber(b, 'x1'), lineNumber(b, 'x2'));
+
+  return Math.max(aLeft, bLeft) < Math.min(aRight, bRight);
+}
+
 function descendantsOf(rootId, childrenByParent) {
   const seen = new Set([String(rootId)]);
   const queue = [String(rootId)];
@@ -284,6 +297,48 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(activeButton.dataset.limit, '1');
     assert.ok(root, 'expected the root node to be rendered');
     assert.ok(maxTop <= root.top + ROW_H, 'expected no nodes below the children generation');
+  });
+
+  it('orders child-family blocks by oldest child birth year', async function() {
+    const { nodes } = await renderTreeFixture(1160, 'descendants', 1);
+    const root = nodes.find(node => node.className.includes('is-root'));
+    const childRow = nodes.filter(node => node.top === root.top + ROW_H);
+    const byId = new Map(childRow.map(node => [node.id, node]));
+
+    assert.ok(byId.has('10562'), 'expected Шабан Сергей Ильин to render');
+    assert.ok(byId.has('10560'), 'expected Шабан Карп Ильин to render');
+    assert.ok(byId.has('7212'), 'expected Шабан Семен Ильин to render');
+    assert.ok(byId.has('7712'), 'expected Павловец Ирина Ильина to render');
+    assert.ok(byId.has('7713'), 'expected Павловец Елена Ильина to render');
+
+    const sergeyLeft = byId.get('10562').left;
+    for (const id of ['10560', '7212', '7712', '7713']) {
+      assert.ok(sergeyLeft < byId.get(id).left, `expected Сергей to be left of child ${id}`);
+    }
+  });
+
+  it('keeps child-family connector horizontals from overlapping', async function() {
+    for (const rootId of [1160, 11083, 748, 508, 1658]) {
+      const { lines } = await renderTreeFixture(rootId, 'descendants');
+      const childHorizontals = lines.filter(line =>
+        line.attributes.stroke === '#7bc8a8' &&
+        lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+        lineNumber(line, 'x1') !== lineNumber(line, 'x2')
+      );
+
+      for (let i = 0; i < childHorizontals.length; i += 1) {
+        for (let j = i + 1; j < childHorizontals.length; j += 1) {
+          const a = childHorizontals[i];
+          const b = childHorizontals[j];
+          if (lineNumber(a, 'y1') !== lineNumber(b, 'y1')) continue;
+
+          assert.ok(
+            !horizontalSegmentsOverlap(a, b),
+            `expected child connector horizontals not to overlap for root ${rootId} at y=${lineNumber(a, 'y1')}`
+          );
+        }
+      }
+    }
   });
 
   it('allows a numeric descendants limit greater than one', async function() {
