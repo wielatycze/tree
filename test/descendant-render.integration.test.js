@@ -77,6 +77,25 @@ function descendantsOf(rootId, childrenByParent) {
   return seen;
 }
 
+function descendantDepthOf(rootId, childrenByParent) {
+  let depth = 0;
+  let queue = [String(rootId)];
+
+  while (queue.length) {
+    const next = [];
+    for (const id of queue) {
+      for (const childId of childrenByParent[id] || []) {
+        next.push(String(childId));
+      }
+    }
+    if (!next.length) break;
+    depth += 1;
+    queue = next;
+  }
+
+  return depth;
+}
+
 function ancestorsOf(rootId, parentsByChild) {
   const seen = new Set([String(rootId)]);
   const queue = [String(rootId)];
@@ -219,6 +238,8 @@ describe('Descendant mode real render', function() {
 
   it('shows a descendants generation selector with all selected by default', async function() {
     const { descendantLimitControl, descendantLimitOptions } = await renderDescendantFixture(11083);
+    const childrenByParent = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/children.json'), 'utf8'));
+    const maxDepth = descendantDepthOf(11083, childrenByParent);
     const buttons = descendantLimitOptions.children;
     const buttonValues = buttons.map(button => button.dataset.limit);
     const activeButton = buttons.find(button => button.className.includes('generation-limit-btn-active'));
@@ -226,16 +247,32 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(descendantLimitControl.style.display, 'flex');
     assert.ok(buttonValues.includes('all'), 'expected the all option to be present');
     assert.ok(buttonValues.includes('1'), 'expected the minimum generation limit to be 1');
+    assert.ok(!buttonValues.includes(String(maxDepth)), 'expected the max generation to be represented by all only');
     assert.ok(activeButton, 'expected one active generation button');
     assert.strictEqual(activeButton.dataset.limit, 'all');
     assert.strictEqual(activeButton.textContent, 'Усе');
     assert.strictEqual(activeButton.attributes['aria-pressed'], 'true');
+
+    const duplicateMax = await renderTreeFixture(11083, 'descendants', maxDepth);
+    const duplicateMaxActive = duplicateMax.descendantLimitOptions.children
+      .find(button => button.className.includes('generation-limit-btn-active'));
+
+    assert.strictEqual(duplicateMaxActive.dataset.limit, 'all');
   });
 
   it('hides the descendants generation selector outside descendants mode', async function() {
     const { descendantLimitControl } = await renderTreeFixture(11083, 'ancestors');
 
     assert.strictEqual(descendantLimitControl.style.display, 'none');
+  });
+
+  it('does not render a children row in ancestors mode', async function() {
+    const { nodes } = await renderTreeFixture(11083, 'ancestors');
+    const root = nodes.find(node => node.className.includes('is-root'));
+    const maxTop = Math.max(...nodes.map(node => node.top));
+
+    assert.ok(root, 'expected the root node to be rendered');
+    assert.ok(maxTop <= root.top, 'expected ancestors mode not to render descendants below the root');
   });
 
   it('limits descendants mode to one descendant generation', async function() {

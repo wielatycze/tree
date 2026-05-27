@@ -29,11 +29,7 @@ const LABEL_W  = 90;   // left margin reserved for generation labels
 const Y_GGP  = 24;                    // great-grandparents
 const Y_GP   = Y_GGP + ROW_H;        // grandparents
 const Y_PAR  = Y_GP  + ROW_H;        // parents + root + spouses
-const Y_CH   = Y_PAR + ROW_H;        // children
-const Y_GCH  = Y_CH  + ROW_H;        // grandchildren (label only)
-
 const HLINE_Y    = Y_PAR + Math.round(NODE_H / 2);  // marriage line Y
-const BASE_DROP_Y = Y_PAR + NODE_H + 36;             // top of first child drop bar
 
 // ── Global data store ─────────────────────────────────────────
 // Populated by loadData(). Short names match JSON file names.
@@ -443,7 +439,6 @@ function renderTree(tree) {
 
   const Y_ROOT      = 24 + actualDepth * ROW_H;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
-  const BASE_DROP_Y = Y_ROOT + ROW_H - 16;
 
   // ── Spouse layout offsets ─────────────────────────────────
   const SP_GAP  = 32;
@@ -464,33 +459,12 @@ function renderTree(tree) {
   ];
 
   // ── Compute below-root width ───────────────────────────────
-  // Children are grouped by family and rendered sequentially.
-  const birthYear = (p) => {
-    if (p.birth && p.birth[0]) return p.birth[0];
-    const r = SI.find(x => x[0] == p.id);
-    return (r && r[6]) || 9999;
-  };
-  const famBlocks = orderedFams
-    .map((fam, fi) => ({ fam, fi, children: fam.children.slice().sort((a,b)=>birthYear(a)-birthYear(b)) }))
-    .filter(b => b.children.length > 0);
-
-  famBlocks.sort((A, B) => {
-    const aAnchor = orderedFams[A.fi].spouse ? anchorOffsets[A.fi] : 0;
-    const bAnchor = orderedFams[B.fi].spouse ? anchorOffsets[B.fi] : 0;
-    return aAnchor - bAnchor || birthYear(A.children[0]) - birthYear(B.children[0]);
-  });
-
-  const childModeBlockWidths = famBlocks.map(b => b.children.length * (NODE_W + GAP_X) - GAP_X);
-  const childModeBelowWidth = childModeBlockWidths.length > 0
-    ? childModeBlockWidths.reduce((s,w) => s + w, 0) + (childModeBlockWidths.length - 1) * FAM_GAP
-    : 0;
   const descendantLimit = resolveDescendantGenerationLimit();
   const descendantLayout = currentMode === 'descendants'
     ? computeDescendantLayout(ancestorTree.person.id, descendantLimit)
     : null;
-  const belowWidth = descendantLayout ? descendantLayout.width : childModeBelowWidth;
-  const belowLeftNeeded = descendantLayout ? descendantLayout.rootOffset : belowWidth / 2;
-  const belowRightNeeded = descendantLayout ? descendantLayout.width - descendantLayout.rootOffset : belowWidth / 2;
+  const belowLeftNeeded = descendantLayout ? descendantLayout.rootOffset : 0;
+  const belowRightNeeded = descendantLayout ? descendantLayout.width - descendantLayout.rootOffset : 0;
 
   // ── Resolve rootCx ────────────────────────────────────────
   const leftSpouseNeeded = leftSpouseOffsets.length
@@ -516,7 +490,6 @@ function renderTree(tree) {
     ? rightSpouseOffsets[rightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
   const maxAncCx = positions.reduce((m, p) => Math.max(m, p.cx), rootCx);
 
-  const hasAncChildren = orderedFams.some(f => f.children.length > 0);
   const canvasW = Math.ceil(Math.max(
     maxAncCx + NODE_W/2 + MARGIN,
     rootCx + rightSpouseNeeded + MARGIN,
@@ -524,7 +497,7 @@ function renderTree(tree) {
   ));
   const descendantDepth = currentMode === 'descendants'
     ? computeDescendantDepth(ancestorTree.person.id, descendantLimit)
-    : (hasAncChildren ? 1 : 0);
+    : 0;
   const canvasH = Y_ROOT
     + (descendantDepth + 1) * ROW_H
     + 40;
@@ -569,8 +542,6 @@ function renderTree(tree) {
   // ── Spouses + marriage hlines ─────────────────────────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
-  const anchorCxList  = anchorOffsets.map(o => rootCx + o);
-
   leftFams.forEach((fam, i) => {
     const scx    = leftSpouseCx[i];
     const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
@@ -588,64 +559,10 @@ function renderTree(tree) {
     }
   });
 
-  // ── Below root: draw children grouped by family ────────────
+  // ── Below root: draw descendants ───────────────────────────
   if (currentMode === 'descendants') {
     renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, descendantLimit);
-  } else {
-    renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, childModeBelowWidth, MARGIN);
   }
-
-function renderChildrenMode(svg, rootCx, Y_ROOT, anchorCxList, orderedFams, famBlocks, belowWidth, MARGIN) {
-  const singleFamilyAnchor = TreeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
-  const chStart = TreeLayout.computeChildrenStart(rootCx, singleFamilyAnchor, belowWidth, MARGIN);
-  const Y_CH = Y_ROOT + ROW_H;
-  const drawnAnchors = new Set();
-  const placedBlocks = [];
-
-  let cursor = chStart;
-  famBlocks.forEach((blk, fi) => {
-    const blockWidth = blk.children.length * (NODE_W + GAP_X) - GAP_X;
-    const famIndex = blk.fi;
-    const anchorCx = orderedFams[famIndex].spouse ? anchorCxList[famIndex] : rootCx;
-    const stubStartY = orderedFams[famIndex].spouse ? HLINE_Y : nodeBot(Y_ROOT);
-    let familyDropY = BASE_DROP_Y;
-    for (const prev of placedBlocks) {
-      if (anchorCx >= prev.firstCx && anchorCx <= prev.lastCx) {
-        familyDropY = Math.min(familyDropY, prev.familyDropY - STAGGER);
-      }
-    }
-    familyDropY = Math.max(HLINE_Y + 20, familyDropY);
-    const key = `${anchorCx},${stubStartY},${familyDropY}`;
-
-    if (!drawnAnchors.has(key)) {
-      drawnAnchors.add(key);
-      drawLine(svg, anchorCx, stubStartY, anchorCx, familyDropY, '#7bc8a8');
-    }
-
-    const blockLeft = cursor;
-    const firstCx = nodeCx(blockLeft);
-    const lastCx = nodeCx(blockLeft + blockWidth - NODE_W);
-
-    if (blk.children.length > 1) drawBar(svg, firstCx, lastCx, familyDropY, '#7bc8a8');
-
-    if (anchorCx < firstCx) drawLine(svg, anchorCx, familyDropY, firstCx, familyDropY, '#7bc8a8');
-    else if (anchorCx > lastCx) drawLine(svg, lastCx, familyDropY, anchorCx, familyDropY, '#7bc8a8');
-
-    blk.children.forEach((child, ci) => {
-      let childCx;
-      if (blk.children.length === 1) {
-        childCx = anchorCx;
-      } else {
-        childCx = nodeCx(blockLeft + ci * (NODE_W + GAP_X));
-      }
-      placeNode(child, childCx, Y_CH);
-      drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
-    });
-
-    placedBlocks.push({ firstCx, lastCx, familyDropY });
-    cursor += blockWidth + FAM_GAP;
-  });
-}
 
 function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, maxGenerations) {
   if (maxGenerations <= 0) return;
@@ -849,9 +766,9 @@ function updateDescendantLimitControl(rootId) {
   control.style.display = currentMode === 'descendants' ? 'flex' : 'none';
 
   const maxDepth = computeDescendantDepth(rootId);
-  const nextValue = descendantGenerationLimit == null || maxDepth <= 0
+  const nextValue = descendantGenerationLimit == null || maxDepth <= 0 || descendantGenerationLimit >= maxDepth
     ? 'all'
-    : String(Math.min(descendantGenerationLimit, maxDepth));
+    : String(descendantGenerationLimit);
 
   options.innerHTML = '';
 
@@ -874,11 +791,11 @@ function updateDescendantLimitControl(rootId) {
 
   addLimitButton('all', 'Усе');
 
-  for (let generation = 1; generation <= maxDepth; generation += 1) {
+  for (let generation = 1; generation < maxDepth; generation += 1) {
     addLimitButton(String(generation), String(generation));
   }
 
-  if (nextValue !== 'all') descendantGenerationLimit = Number(nextValue);
+  descendantGenerationLimit = nextValue === 'all' ? null : Number(nextValue);
 }
 
 function setMode(mode) {
