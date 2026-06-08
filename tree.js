@@ -144,15 +144,36 @@ function buildAncestorNode(id, seen = new Set()) {
   };
 }
 
-/** Compute the minimum horizontal slot width needed for an ancestor subtree. */
-function slotWidth(node) {
-  if (!node) return 0;
-  const fw = slotWidth(node.father);
-  const mw = slotWidth(node.mother);
-  if (!fw && !mw) return NODE_W;
-  if (!fw) return Math.max(NODE_W, mw);
-  if (!mw) return Math.max(NODE_W, fw);
-  return Math.max(NODE_W, fw + GAP_X + mw);
+/** Compute subtree extents from a person's centre. */
+function ancestorExtents(node) {
+  if (!node) return { left: 0, right: 0 };
+  const self = NODE_W / 2;
+  const fatherExt = ancestorExtents(node.father);
+  const motherExt = ancestorExtents(node.mother);
+
+  if (node.father && node.mother) {
+    const parentOffset = (fatherExt.right + GAP_X + motherExt.left) / 2;
+    return {
+      left: Math.max(self, parentOffset + fatherExt.left),
+      right: Math.max(self, parentOffset + motherExt.right),
+    };
+  }
+
+  if (node.father) {
+    return {
+      left: Math.max(self, fatherExt.left),
+      right: Math.max(self, fatherExt.right),
+    };
+  }
+
+  if (node.mother) {
+    return {
+      left: Math.max(self, motherExt.left),
+      right: Math.max(self, motherExt.right),
+    };
+  }
+
+  return { left: self, right: self };
 }
 
 /**
@@ -162,16 +183,14 @@ function slotWidth(node) {
  */
 function assignAncestorPositions(node, cx, depth, results = []) {
   if (!node) return results;
-  results.push({ person: node.person, cx, depth });
-  const fw = slotWidth(node.father);
-  const mw = slotWidth(node.mother);
+  results.push({ node, person: node.person, cx, depth });
   if (node.father && node.mother) {
-    // Two parents: place symmetrically left (father) and right (mother)
-    const totalW = fw + GAP_X + mw;
-    assignAncestorPositions(node.father, cx - totalW/2 + fw/2,  depth + 1, results);
-    assignAncestorPositions(node.mother, cx + totalW/2 - mw/2, depth + 1, results);
+    const fatherExt = ancestorExtents(node.father);
+    const motherExt = ancestorExtents(node.mother);
+    const parentOffset = (fatherExt.right + GAP_X + motherExt.left) / 2;
+    assignAncestorPositions(node.father, cx - parentOffset, depth + 1, results);
+    assignAncestorPositions(node.mother, cx + parentOffset, depth + 1, results);
   } else if (node.father) {
-    // Single parent: directly above
     assignAncestorPositions(node.father, cx, depth + 1, results);
   } else if (node.mother) {
     assignAncestorPositions(node.mother, cx, depth + 1, results);
@@ -388,12 +407,12 @@ function renderTree(tree) {
   // ── Resolve rootCx ────────────────────────────────────────
   const leftSpouseNeeded = leftSpouseOffsets.length
     ? -(leftSpouseOffsets[leftSpouseOffsets.length-1] - NODE_W/2) : 0;
-  const ancestorW = slotWidth(ancestorTree);
+  const ancestorBounds = ancestorExtents(ancestorTree);
 
   const rootCxRaw = Math.max(
     MARGIN + leftSpouseNeeded,
     MARGIN + belowLeftNeeded,
-    MARGIN + ancestorW / 2,
+    MARGIN + ancestorBounds.left,
   );
 
   const ancestorPositions = assignAncestorPositions(ancestorTree, rootCxRaw, 0);
@@ -402,7 +421,7 @@ function renderTree(tree) {
   const rootCx   = rootCxRaw + shift;
 
   const positions = assignAncestorPositions(ancestorTree, rootCx, 0);
-  const posMap    = new Map(positions.map(p => [p.person.id, p]));
+  const posByNode = new Map(positions.map(p => [p.node, p]));
 
   // ── Canvas size ───────────────────────────────────────────
   const rightSpouseNeeded = rightSpouseOffsets.length
@@ -436,13 +455,12 @@ function renderTree(tree) {
   });
 
   // ── Ancestor connectors ───────────────────────────────────
-  positions.forEach(({ person, cx, depth }) => {
+  positions.forEach(({ node, person, cx, depth }) => {
     const childY  = Y_ROOT - depth * ROW_H;
     const parentY = Y_ROOT - (depth + 1) * ROW_H;
     const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
-    const [fid, mid] = PA[person.id] || [null, null];
-    const fpos = fid ? posMap.get(fid) : null;
-    const mpos = mid ? posMap.get(mid) : null;
+    const fpos = node.father ? posByNode.get(node.father) : null;
+    const mpos = node.mother ? posByNode.get(node.mother) : null;
     if (!fpos && !mpos) return;
     if (fpos && mpos) {
       drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');

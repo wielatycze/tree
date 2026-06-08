@@ -534,6 +534,55 @@ describe('Descendant mode real render', function() {
     }
   });
 
+  it('centers every rendered child under the midpoint of both rendered parents', async function() {
+    const rootId = 10536;
+    const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
+    const { nodes } = await renderTreeFixture(rootId, 'ancestors');
+    const byId = new Map(nodes.map(node => [node.id, node]));
+
+    for (const node of nodes) {
+      const [fatherId, motherId] = parentsByChild[node.id] || [];
+      if (!fatherId || !motherId) continue;
+      const father = byId.get(String(fatherId));
+      const mother = byId.get(String(motherId));
+      if (!father || !mother) continue;
+
+      const childCx = node.left + NODE_W / 2;
+      const parentMid = (father.left + NODE_W / 2 + mother.left + NODE_W / 2) / 2;
+
+      assert.strictEqual(childCx, parentMid, `expected ${node.id} to be centered under both parents`);
+    }
+  });
+
+  it('connects duplicate ancestor occurrences to their own rendered parents', async function() {
+    const { nodes, lines } = await renderTreeFixture(16808, 'ancestors');
+    const duplicateAncestors = ['1489', '6330', '18513', '18514'];
+
+    for (const id of duplicateAncestors) {
+      assert.strictEqual(
+        nodes.filter(node => node.id === id).length,
+        2,
+        `expected duplicate ancestor ${id} to render as two pedigree occurrences`
+      );
+    }
+
+    for (const id of ['1489', '6330']) {
+      const occurrences = nodes.filter(node => node.id === id);
+      for (const node of occurrences) {
+        const cx = node.left + NODE_W / 2;
+        assert.ok(
+          lines.some(line =>
+            ['#999', '#7ca8d8', '#d87898'].includes(line.attributes.stroke) &&
+            lineNumber(line, 'x1') === cx &&
+            lineNumber(line, 'x2') === cx &&
+            lineNumber(line, 'y2') === node.top
+          ),
+          `expected duplicate ancestor ${id} occurrence at x=${cx} to have its own child connector`
+        );
+      }
+    }
+  });
+
   it('renders every known ancestor in descendants mode without a generation cap', async function() {
     const rootId = 18157;
     const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
