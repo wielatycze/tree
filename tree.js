@@ -198,6 +198,67 @@ function assignAncestorPositions(node, cx, depth, results = []) {
   return results;
 }
 
+function buildAncestorGraphLayout(ancestorTree, rootCx) {
+  const occurrences = assignAncestorPositions(ancestorTree, rootCx, 0);
+  const nodesById = new Map();
+  const edgeKeys = new Set();
+  const edges = [];
+
+  occurrences.forEach(pos => {
+    const id = String(pos.person.id);
+    const existing = nodesById.get(id);
+    if (!existing) {
+      nodesById.set(id, {
+        person: pos.person,
+        depth: pos.depth,
+        occurrencePositions: [pos],
+      });
+    } else {
+      existing.depth = Math.max(existing.depth, pos.depth);
+      existing.occurrencePositions.push(pos);
+    }
+  });
+
+  occurrences.forEach(pos => {
+    [
+      ['father', pos.node.father],
+      ['mother', pos.node.mother],
+    ].forEach(([kind, parentNode]) => {
+      if (!parentNode) return;
+      const key = `${parentNode.person.id}:${pos.person.id}:${kind}`;
+      if (edgeKeys.has(key)) return;
+      edgeKeys.add(key);
+      edges.push({
+        kind,
+        parentId: String(parentNode.person.id),
+        childId: String(pos.person.id),
+      });
+    });
+  });
+
+  const nodes = Array.from(nodesById.entries()).map(([id, node]) => {
+    const deepest = node.occurrencePositions.filter(pos => pos.depth === node.depth);
+    const cx = deepest.reduce((sum, pos) => sum + pos.cx, 0) / deepest.length;
+    return { id, person: node.person, depth: node.depth, cx };
+  });
+
+  const rows = new Map();
+  nodes.forEach(node => {
+    if (!rows.has(node.depth)) rows.set(node.depth, []);
+    rows.get(node.depth).push(node);
+  });
+
+  rows.forEach(row => {
+    row.sort((a, b) => a.cx - b.cx || Number(a.id) - Number(b.id));
+    for (let i = 1; i < row.length; i += 1) {
+      const minCx = row[i - 1].cx + NODE_W + GAP_X;
+      if (row[i].cx < minCx) row[i].cx = minCx;
+    }
+  });
+
+  return { nodes, edges };
+}
+
 /** Build the full tree data structure centred on rootId. */
 function buildTree(rootId) {
   const root = buildPerson(rootId);
@@ -330,10 +391,15 @@ function svgEl(tag, attrs) {
   return el;
 }
 
-function drawLine(svg, x1, y1, x2, y2, stroke, dashed = false) {
-  const attrs = { x1, y1, x2, y2, stroke, 'stroke-width': '1.5' };
+function drawLine(svg, x1, y1, x2, y2, stroke, dashed = false, strokeWidth = 1.5) {
+  const attrs = { x1, y1, x2, y2, stroke, 'stroke-width': strokeWidth };
   if (dashed) attrs['stroke-dasharray'] = '5,4';
   svg.appendChild(svgEl('line', attrs));
+}
+
+function drawCasedLine(svg, x1, y1, x2, y2, stroke, dashed = false) {
+  drawLine(svg, x1, y1, x2, y2, '#fff', dashed, 5);
+  drawLine(svg, x1, y1, x2, y2, stroke, dashed, 1.5);
 }
 
 function drawBar(svg, cx1, cx2, y, stroke) {
@@ -420,8 +486,18 @@ function renderTree(tree) {
   const shift    = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
   const rootCx   = rootCxRaw + shift;
 
-  const positions = assignAncestorPositions(ancestorTree, rootCx, 0);
-  const posByNode = new Map(positions.map(p => [p.node, p]));
+  const ancestorGraph = currentMode === 'ancestors'
+    ? buildAncestorGraphLayout(ancestorTree, rootCx)
+    : null;
+  const positions = ancestorGraph
+    ? ancestorGraph.nodes
+    : assignAncestorPositions(ancestorTree, rootCx, 0);
+  const posByNode = ancestorGraph
+    ? null
+    : new Map(positions.map(p => [p.node, p]));
+  const posById = ancestorGraph
+    ? new Map(positions.map(p => [p.id, p]))
+    : null;
 
   // ── Canvas size ───────────────────────────────────────────
   const rightSpouseNeeded = rightSpouseOffsets.length
@@ -455,37 +531,89 @@ function renderTree(tree) {
   });
 
   // ── Ancestor connectors ───────────────────────────────────
-  positions.forEach(({ node, person, cx, depth }) => {
-    const childY  = Y_ROOT - depth * ROW_H;
-    const parentY = Y_ROOT - (depth + 1) * ROW_H;
-    const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
-    const fpos = node.father ? posByNode.get(node.father) : null;
-    const mpos = node.mother ? posByNode.get(node.mother) : null;
-    if (!fpos && !mpos) return;
-    if (fpos && mpos) {
-      drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
-      drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
-      const barMid = (fpos.cx + mpos.cx) / 2;
-      if (Math.abs(barMid - cx) > 0.5) {
-        const parentLeft = Math.min(fpos.cx, mpos.cx);
-        const parentRight = Math.max(fpos.cx, mpos.cx);
-        const offsetLeft = Math.min(barMid, cx);
-        const offsetRight = Math.max(barMid, cx);
+  if (ancestorGraph) {
+    const edgesByChild = new Map();
+    ancestorGraph.edges.forEach(edge => {
+      if (!edgesByChild.has(edge.childId)) edgesByChild.set(edge.childId, []);
+      edgesByChild.get(edge.childId).push(edge);
+    });
 
-        if (parentLeft < offsetLeft) drawBar(svg, parentLeft, offsetLeft, midY, '#aaa');
-        if (offsetRight < parentRight) drawBar(svg, offsetRight, parentRight, midY, '#aaa');
-        drawLine(svg, barMid, midY, cx, midY, '#999');
+    edgesByChild.forEach((edges, childId) => {
+      const childPos = posById.get(childId);
+      if (!childPos) return;
+      const childY = Y_ROOT - childPos.depth * ROW_H;
+      const fatherEdge = edges.find(edge => edge.kind === 'father');
+      const motherEdge = edges.find(edge => edge.kind === 'mother');
+      const fpos = fatherEdge ? posById.get(fatherEdge.parentId) : null;
+      const mpos = motherEdge ? posById.get(motherEdge.parentId) : null;
+
+      if (fpos && mpos) {
+        const fatherY = Y_ROOT - fpos.depth * ROW_H;
+        const motherY = Y_ROOT - mpos.depth * ROW_H;
+        const coupleY = Math.min(
+          childY - 8,
+          Math.max(nodeBot(fatherY), nodeBot(motherY)) + Math.round(GAP_Y * 0.5)
+        );
+        const barMid = (fpos.cx + mpos.cx) / 2;
+
+        drawCasedLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#7ca8d8');
+        drawCasedLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#d87898');
+        drawCasedLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
+        if (Math.abs(barMid - childPos.cx) > 0.5) {
+          const branchY = Math.min(childY - 8, coupleY + 16);
+          drawCasedLine(svg, barMid, coupleY, barMid, branchY, '#999');
+          drawCasedLine(svg, barMid, branchY, childPos.cx, branchY, '#999');
+          drawCasedLine(svg, childPos.cx, branchY, childPos.cx, childY, '#999');
+        } else {
+          drawCasedLine(svg, childPos.cx, coupleY, childPos.cx, childY, '#999');
+        }
       } else {
-        drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
-        drawLine(svg, cx, midY, cx, childY, '#999');
+        const parentPos = fpos || mpos;
+        if (!parentPos) return;
+        const parentY = Y_ROOT - parentPos.depth * ROW_H;
+        const color = fpos ? '#7ca8d8' : '#d87898';
+        const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
+
+        drawCasedLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
+        if (Math.abs(parentPos.cx - childPos.cx) > 0.5) {
+          drawCasedLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
+        }
+        drawCasedLine(svg, childPos.cx, elbowY, childPos.cx, childY, color);
       }
-      if (Math.abs(barMid - cx) > 0.5) drawLine(svg, cx, midY, cx, childY, '#999');
-    } else {
-      const parentCx = fpos ? fpos.cx : mpos.cx;
-      const color    = fpos ? '#7ca8d8' : '#d87898';
-      drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
-    }
-  });
+    });
+  } else {
+    positions.forEach(({ node, person, cx, depth }) => {
+      const childY  = Y_ROOT - depth * ROW_H;
+      const parentY = Y_ROOT - (depth + 1) * ROW_H;
+      const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
+      const fpos = node.father ? posByNode.get(node.father) : null;
+      const mpos = node.mother ? posByNode.get(node.mother) : null;
+      if (!fpos && !mpos) return;
+      if (fpos && mpos) {
+        drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
+        drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
+        const barMid = (fpos.cx + mpos.cx) / 2;
+        if (Math.abs(barMid - cx) > 0.5) {
+          const parentLeft = Math.min(fpos.cx, mpos.cx);
+          const parentRight = Math.max(fpos.cx, mpos.cx);
+          const offsetLeft = Math.min(barMid, cx);
+          const offsetRight = Math.max(barMid, cx);
+
+          if (parentLeft < offsetLeft) drawBar(svg, parentLeft, offsetLeft, midY, '#aaa');
+          if (offsetRight < parentRight) drawBar(svg, offsetRight, parentRight, midY, '#aaa');
+          drawLine(svg, barMid, midY, cx, midY, '#999');
+        } else {
+          drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
+          drawLine(svg, cx, midY, cx, childY, '#999');
+        }
+        if (Math.abs(barMid - cx) > 0.5) drawLine(svg, cx, midY, cx, childY, '#999');
+      } else {
+        const parentCx = fpos ? fpos.cx : mpos.cx;
+        const color    = fpos ? '#7ca8d8' : '#d87898';
+        drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
+      }
+    });
+  }
 
   // ── Spouses + marriage hlines ─────────────────────────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);

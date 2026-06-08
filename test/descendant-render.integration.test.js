@@ -554,33 +554,63 @@ describe('Descendant mode real render', function() {
     }
   });
 
-  it('connects duplicate ancestor occurrences to their own rendered parents', async function() {
+  it('renders pedigree-collapse ancestors once with visible graph connectors', async function() {
     const { nodes, lines } = await renderTreeFixture(16808, 'ancestors');
     const duplicateAncestors = ['1489', '6330', '18513', '18514'];
 
     for (const id of duplicateAncestors) {
       assert.strictEqual(
         nodes.filter(node => node.id === id).length,
-        2,
-        `expected duplicate ancestor ${id} to render as two pedigree occurrences`
+        1,
+        `expected pedigree-collapse ancestor ${id} to render once`
       );
     }
 
     for (const id of ['1489', '6330']) {
-      const occurrences = nodes.filter(node => node.id === id);
-      for (const node of occurrences) {
-        const cx = node.left + NODE_W / 2;
-        assert.ok(
-          lines.some(line =>
-            ['#999', '#7ca8d8', '#d87898'].includes(line.attributes.stroke) &&
-            lineNumber(line, 'x1') === cx &&
-            lineNumber(line, 'x2') === cx &&
-            lineNumber(line, 'y2') === node.top
-          ),
-          `expected duplicate ancestor ${id} occurrence at x=${cx} to have its own child connector`
-        );
-      }
+      const node = nodes.find(renderedNode => renderedNode.id === id);
+      const cx = node.left + NODE_W / 2;
+      assert.ok(
+        lines.some(line =>
+          ['#999', '#7ca8d8', '#d87898'].includes(line.attributes.stroke) &&
+          lineNumber(line, 'x1') === cx &&
+          lineNumber(line, 'x2') === cx &&
+          lineNumber(line, 'y2') === node.top
+        ),
+        `expected pedigree-collapse ancestor ${id} to have a visible child connector`
+      );
     }
+
+    assert.ok(
+      lines.some(line => line.attributes.stroke === '#fff' && Number(line.attributes['stroke-width']) > 1.5),
+      'expected cased graph connector lines so crossings remain legible'
+    );
+  });
+
+  it('routes graph child branches below the parent couple bar', async function() {
+    const { nodes, lines } = await renderTreeFixture(16808, 'ancestors');
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const fatherCx = byId.get('1489').left + NODE_W / 2;
+    const motherCx = byId.get('6330').left + NODE_W / 2;
+    const childCx = byId.get('1490').left + NODE_W / 2;
+    const parentBar = lines.find(line =>
+      line.attributes.stroke === '#aaa' &&
+      lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+      Math.min(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === Math.min(fatherCx, motherCx) &&
+      Math.max(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === Math.max(fatherCx, motherCx)
+    );
+    const childBranch = lines.find(line =>
+      line.attributes.stroke === '#999' &&
+      lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
+      Math.min(lineNumber(line, 'x1'), lineNumber(line, 'x2')) <= childCx &&
+      Math.max(lineNumber(line, 'x1'), lineNumber(line, 'x2')) >= childCx
+    );
+
+    assert.ok(parentBar, 'expected a parent couple bar between 1489 and 6330');
+    assert.ok(childBranch, 'expected a horizontal child branch toward 1490');
+    assert.ok(
+      lineNumber(childBranch, 'y1') > lineNumber(parentBar, 'y1'),
+      'expected child branch to run below the parent couple bar'
+    );
   });
 
   it('renders every known ancestor in descendants mode without a generation cap', async function() {
