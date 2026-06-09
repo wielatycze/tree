@@ -83,6 +83,57 @@ async function loadData() {
   }
 }
 
+// ── ID Mapping (database ID ↔ custom ID) ──────────────────────
+
+/** Resolve a URL identifier to a database ID */
+function resolvePersonId(identifier) {
+  if (!identifier) return CONFIG.homeId;
+  
+  // Check if it's a database ID (prefixed with ~)
+  if (identifier.startsWith('~')) {
+    const dbId = parseInt(identifier.slice(1), 10);
+    if (!isNaN(dbId) && dbId > 0) {
+      if (SI.some(x => x[0] === dbId) || BI[dbId] || DE[dbId]) {
+        return dbId;
+      }
+    }
+    return CONFIG.homeId;
+  }
+  
+  // Otherwise try custom ID first
+  const id = parseInt(identifier, 10);
+  if (isNaN(id) || id <= 0) return CONFIG.homeId;
+  
+  // Try to find by custom ID (num field) first
+  for (const [dbId, customId] of Object.entries(NU)) {
+    if (customId === id) {
+      return parseInt(dbId, 10);
+    }
+  }
+
+  // Fall back to database ID if custom ID not found
+  if (SI.some(x => x[0] === id) || BI[id] || DE[id]) {
+    return id;
+  }
+
+  // Not found - use default
+  return CONFIG.homeId;
+}
+
+/** Get the display ID for a person (custom ID if available, otherwise database ID) */
+function getDisplayId(dbId) {
+  return NU[dbId] ?? dbId;
+}
+
+/** Get the URL-safe identifier for a person (custom ID or ~dbId) */
+function getUrlId(dbId) {
+  const customId = NU[dbId];
+  if (customId != null) {
+    return String(customId);
+  }
+  return `~${dbId}`;
+}
+
 // ── Data helpers ─────────────────────────────────────────────
 
 /** Format a [year, month, day] date tuple as dd.mm.yyyy */
@@ -730,7 +781,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
                ancestorTree.person.surname, ancestorTree.person.maiden);
   updateDescendantLimitControl(currentRootId);
 
-  const newHash = `#${currentRootId}`;
+  const newHash = `#${getUrlId(currentRootId)}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
 
   // Centre root in viewport
@@ -849,7 +900,9 @@ function initUI() {
   });
 
   window.addEventListener('hashchange', () => {
-    const id = parseInt(location.hash.slice(1));
+    const hashValue = location.hash.slice(1);
+    if (!hashValue) return;
+    const id = resolvePersonId(hashValue);
     if (id && id !== currentRootId) navigate(id);
   });
 }
