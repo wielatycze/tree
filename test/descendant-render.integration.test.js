@@ -337,7 +337,7 @@ describe('Descendant mode real render', function() {
     for (const rootId of [3145, 1160, 11083, 748, 508, 1658]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
       const childHorizontals = lines.filter(line =>
-        line.attributes.stroke === '#7bc8a8' &&
+        line.attributes.stroke === '#999' &&
         lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
         lineNumber(line, 'x1') !== lineNumber(line, 'x2')
       );
@@ -360,7 +360,7 @@ describe('Descendant mode real render', function() {
   it('keeps child-family connector verticals from crossing horizontals', async function() {
     for (const rootId of [3145, 1964, 1160, 11083, 748, 508, 1658]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
-      const childLines = lines.filter(line => line.attributes.stroke === '#7bc8a8');
+      const childLines = lines.filter(line => line.attributes.stroke === '#999');
       const verticals = childLines.filter(line =>
         lineNumber(line, 'x1') === lineNumber(line, 'x2') &&
         lineNumber(line, 'y1') !== lineNumber(line, 'y2')
@@ -386,13 +386,13 @@ describe('Descendant mode real render', function() {
     const child = nodes.find(node => node.id === '4045');
     const childCx = child.left + NODE_W / 2;
     const childVertical = lines.find(line =>
-      line.attributes.stroke === '#7bc8a8' &&
+      line.attributes.stroke === '#999' &&
       lineNumber(line, 'x1') === childCx &&
       lineNumber(line, 'x2') === childCx &&
       lineNumber(line, 'y2') === child.top
     );
     const dogleg = lines.find(line =>
-      line.attributes.stroke === '#7bc8a8' &&
+      line.attributes.stroke === '#999' &&
       lineNumber(line, 'y1') === lineNumber(line, 'y2') &&
       Math.min(lineNumber(line, 'x1'), lineNumber(line, 'x2')) < childCx &&
       Math.max(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === childCx
@@ -407,7 +407,7 @@ describe('Descendant mode real render', function() {
     const root = nodes.find(node => node.id === '235');
     const child = nodes.find(node => node.id === '15772');
     const marriageLine = lines.find(line =>
-      line.attributes.stroke === '#bbb' &&
+      line.attributes.stroke === '#999' &&
       line.attributes['stroke-dasharray'] === '5,4' &&
       lineNumber(line, 'y1') === root.top + NODE_H / 2 &&
       lineNumber(line, 'y2') === root.top + NODE_H / 2
@@ -571,7 +571,7 @@ describe('Descendant mode real render', function() {
       const cx = node.left + NODE_W / 2;
       assert.ok(
         lines.some(line =>
-          ['#999', '#7ca8d8', '#d87898'].includes(line.attributes.stroke) &&
+          line.attributes.stroke === '#999' &&
           lineNumber(line, 'x1') === cx &&
           lineNumber(line, 'x2') === cx &&
           lineNumber(line, 'y2') === node.top

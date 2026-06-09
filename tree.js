@@ -607,8 +607,8 @@ function renderTree(tree) {
         );
         const barMid = (fpos.cx + mpos.cx) / 2;
 
-        drawCasedLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#7ca8d8');
-        drawCasedLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#d87898');
+        drawCasedLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
+        drawCasedLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
         drawCasedLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
         if (Math.abs(barMid - childPos.cx) > 0.5) {
           const branchY = Math.min(childY - 8, coupleY + 16);
@@ -622,7 +622,7 @@ function renderTree(tree) {
         const parentPos = fpos || mpos;
         if (!parentPos) return;
         const parentY = Y_ROOT - parentPos.depth * ROW_H;
-        const color = fpos ? '#7ca8d8' : '#d87898';
+        const color = fpos ? '#999' : '#999';
         const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
 
         drawCasedLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
@@ -641,8 +641,8 @@ function renderTree(tree) {
       const mpos = node.mother ? posByNode.get(node.mother) : null;
       if (!fpos && !mpos) return;
       if (fpos && mpos) {
-        drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#7ca8d8');
-        drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#d87898');
+        drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#999');
+        drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#999');
         const barMid = (fpos.cx + mpos.cx) / 2;
         if (Math.abs(barMid - cx) > 0.5) {
           const parentLeft = Math.min(fpos.cx, mpos.cx);
@@ -660,7 +660,7 @@ function renderTree(tree) {
         if (Math.abs(barMid - cx) > 0.5) drawLine(svg, cx, midY, cx, childY, '#999');
       } else {
         const parentCx = fpos ? fpos.cx : mpos.cx;
-        const color    = fpos ? '#7ca8d8' : '#d87898';
+        const color    = fpos ? '#999' : '#999';
         drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
       }
     });
@@ -674,7 +674,7 @@ function renderTree(tree) {
     const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
     if (fam.spouse) {
       placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#bbb', true);
+      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#999', true);
     }
   });
   rightFams.forEach((fam, i) => {
@@ -682,7 +682,7 @@ function renderTree(tree) {
     const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
     if (fam.spouse) {
       placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#bbb', true);
+      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#999', true);
     }
   });
 
@@ -725,7 +725,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
       if (fam.spouse) {
         placeNode(fam.spouse, scx, parentY);
         const hlineY = parentY + Math.round(NODE_H / 2);
-        drawLine(svg, scx, hlineY, fromCx, hlineY, '#bbb', true);
+        drawLine(svg, scx, hlineY, fromCx, hlineY, '#999', true);
       }
     });
     rightFams.forEach((fam, i) => {
@@ -734,7 +734,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
       if (fam.spouse) {
         placeNode(fam.spouse, scx, parentY);
         const hlineY = parentY + Math.round(NODE_H / 2);
-        drawLine(svg, fromCx, hlineY, scx, hlineY, '#bbb', true);
+        drawLine(svg, fromCx, hlineY, scx, hlineY, '#999', true);
       }
     });
   }
@@ -753,19 +753,19 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
     if (!drawnAnchors.has(key)) {
       drawnAnchors.add(key);
-      drawLine(svg, blk.anchorCx, blk.stubStartY, blk.anchorCx, familyDropY, '#7bc8a8');
+      drawLine(svg, blk.anchorCx, blk.stubStartY, blk.anchorCx, familyDropY, '#999');
     }
 
-    if (blk.children.length > 1) drawBar(svg, blk.firstCx, blk.lastCx, familyDropY, '#7bc8a8');
-    if (blk.anchorCx < blk.firstCx) drawLine(svg, blk.anchorCx, familyDropY, blk.firstCx, familyDropY, '#7bc8a8');
-    else if (blk.anchorCx > blk.lastCx) drawLine(svg, blk.lastCx, familyDropY, blk.anchorCx, familyDropY, '#7bc8a8');
+    if (blk.children.length > 1) drawBar(svg, blk.firstCx, blk.lastCx, familyDropY, '#999');
+    if (blk.anchorCx < blk.firstCx) drawLine(svg, blk.anchorCx, familyDropY, blk.firstCx, familyDropY, '#999');
+    else if (blk.anchorCx > blk.lastCx) drawLine(svg, blk.lastCx, familyDropY, blk.anchorCx, familyDropY, '#999');
 
     let childCursor = blk.childBlockLeft;
     blk.children.forEach((child, ci) => {
       const childLayout = blk.childLayouts[ci];
       const childCx = childCursor + childLayout.rootOffset;
       placeNode(child, childCx, Y_CH);
-      drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#7bc8a8');
+      drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#999');
       childPositions.push({ person: child, cx: childCx, y: Y_CH });
       childCursor += childLayout.width + GAP_X;
     });
