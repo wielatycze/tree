@@ -443,16 +443,122 @@ function svgEl(tag, attrs) {
 }
 
 function drawLine(svg, x1, y1, x2, y2, stroke, dashed = false, strokeWidth = 1.5) {
-  const attrs = { x1, y1, x2, y2, stroke, 'stroke-width': strokeWidth };
+  const attrs = { x1, y1, x2, y2, stroke, 'stroke-width': strokeWidth, 'data-segment': '1' };
   if (dashed) attrs['stroke-dasharray'] = '5,4';
-  svg.appendChild(svgEl('line', attrs));
+  const line = svgEl('line', attrs);
+  svg.appendChild(line);
+  // Track line for crossing detection
+  if (!svg.lineSegments) svg.lineSegments = [];
+  svg.lineSegments.push({ line, x1, y1, x2, y2, stroke, strokeWidth, dashed });
 }
 
-function drawCasedLine(svg, x1, y1, x2, y2, stroke, dashed = false) {
-  drawLine(svg, x1, y1, x2, y2, '#fff', dashed, 5);
-  drawLine(svg, x1, y1, x2, y2, stroke, dashed, 1.5);
+// Detect if two line segments intersect
+function segmentsIntersect(p1, p2, p3, p4) {
+  const ccw = (A, B, C) => (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
+  return ccw(p1, p3, p4) !== ccw(p2, p3, p4) && ccw(p1, p2, p3) !== ccw(p1, p2, p4);
 }
 
+// Find intersection point of two line segments (only if both segments actually cross)
+function lineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 0.001) return null; // Parallel or collinear
+  
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+  
+  // Both t and u must be within [0, 1] for segments to actually intersect
+  if (t < 0.01 || t > 0.99 || u < 0.01 || u > 0.99) return null;
+  
+  return {
+    x: x1 + t * (x2 - x1),
+    y: y1 + t * (y2 - y1)
+  };
+}
+
+// Draw bridge for a line that crosses another - gap in the middle
+function drawLineWithBridge(svg, x1, y1, x2, y2, stroke, crossings = [], strokeWidth = 1.5) {
+  if (!crossings.length) {
+    drawLine(svg, x1, y1, x2, y2, stroke, false, strokeWidth);
+    return;
+  }
+  
+  const isVertical = Math.abs(x2 - x1) < 0.1;
+  const isHorizontal = Math.abs(y2 - y1) < 0.1;
+  
+  // Sort crossings by distance along the line
+  crossings.sort((a, b) => {
+    if (isVertical) return a.y - b.y;
+    if (isHorizontal) return a.x - b.x;
+    const distA = Math.hypot(a.x - x1, a.y - y1);
+    const distB = Math.hypot(b.x - x1, b.y - y1);
+    return distA - distB;
+  });
+  
+  const totalDist = Math.hypot(x2 - x1, y2 - y1);
+  const gap = Math.min(8, totalDist * 0.1); // Proportional gap size
+  let lastEnd = { x: x1, y: y1 };
+  
+  for (const cross of crossings) {
+    const dx = cross.x - x1;
+    const dy = cross.y - y1;
+    const dist = Math.hypot(dx, dy);
+    
+    // Skip if crossing too close to start/end
+    if (dist < gap * 1.5 || dist > totalDist - gap * 1.5) continue;
+    
+    const ratio = dist / totalDist;
+    const gapRatio = gap / totalDist;
+    
+    const gapStartX = x1 + (x2 - x1) * Math.max(0, ratio - gapRatio);
+    const gapStartY = y1 + (y2 - y1) * Math.max(0, ratio - gapRatio);
+    
+    // Draw line from last point to gap start
+    drawLine(svg, lastEnd.x, lastEnd.y, gapStartX, gapStartY, stroke, false, strokeWidth);
+    
+    lastEnd = {
+      x: x1 + (x2 - x1) * Math.min(1, ratio + gapRatio),
+      y: y1 + (y2 - y1) * Math.min(1, ratio + gapRatio)
+    };
+  }
+  
+  // Draw final segment
+  drawLine(svg, lastEnd.x, lastEnd.y, x2, y2, stroke, false, strokeWidth);
+}
+
+// Apply bridge effects to lines that cross over others
+function applyBridges(svg) {
+  if (!svg.lineSegments || svg.lineSegments.length < 2) return;
+  
+  const segments = svg.lineSegments;
+  const crossingsBySegment = new Map();
+  
+  // Find all crossings
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const s1 = segments[i];
+      const s2 = segments[j];
+      const intersection = lineIntersection(s1.x1, s1.y1, s1.x2, s1.y2, s2.x1, s2.y1, s2.x2, s2.y2);
+      
+      if (intersection) {
+        // s1 is drawn first (under), s2 crosses over it
+        if (!crossingsBySegment.has(j)) crossingsBySegment.set(j, []);
+        crossingsBySegment.get(j).push(intersection);
+      }
+    }
+  }
+  
+  if (crossingsBySegment.size === 0) return;
+  
+  // Redraw lines that have crossings with bridges
+  crossingsBySegment.forEach((crossings, idx) => {
+    const seg = segments[idx];
+    seg.line.remove();
+    drawLineWithBridge(svg, seg.x1, seg.y1, seg.x2, seg.y2, seg.stroke, 
+                      crossings, seg.strokeWidth);
+  });
+}
+
+// Draw a horizontal bar
 function drawBar(svg, cx1, cx2, y, stroke) {
   drawLine(svg, Math.min(cx1, cx2), y, Math.max(cx1, cx2), y, stroke);
 }
@@ -607,16 +713,16 @@ function renderTree(tree) {
         );
         const barMid = (fpos.cx + mpos.cx) / 2;
 
-        drawCasedLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
-        drawCasedLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
-        drawCasedLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
+        drawLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
+        drawLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
+        drawLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
         if (Math.abs(barMid - childPos.cx) > 0.5) {
           const branchY = Math.min(childY - 8, coupleY + 16);
-          drawCasedLine(svg, barMid, coupleY, barMid, branchY, '#999');
-          drawCasedLine(svg, barMid, branchY, childPos.cx, branchY, '#999');
-          drawCasedLine(svg, childPos.cx, branchY, childPos.cx, childY, '#999');
+          drawLine(svg, barMid, coupleY, barMid, branchY, '#999');
+          drawLine(svg, barMid, branchY, childPos.cx, branchY, '#999');
+          drawLine(svg, childPos.cx, branchY, childPos.cx, childY, '#999');
         } else {
-          drawCasedLine(svg, childPos.cx, coupleY, childPos.cx, childY, '#999');
+          drawLine(svg, childPos.cx, coupleY, childPos.cx, childY, '#999');
         }
       } else {
         const parentPos = fpos || mpos;
@@ -625,11 +731,11 @@ function renderTree(tree) {
         const color = fpos ? '#999' : '#999';
         const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
 
-        drawCasedLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
+        drawLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
         if (Math.abs(parentPos.cx - childPos.cx) > 0.5) {
-          drawCasedLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
+          drawLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
         }
-        drawCasedLine(svg, childPos.cx, elbowY, childPos.cx, childY, color);
+        drawLine(svg, childPos.cx, elbowY, childPos.cx, childY, color);
       }
     });
   } else {
@@ -783,6 +889,9 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
   const newHash = `#${getUrlId(currentRootId)}`;
   if (location.hash !== newHash) history.replaceState(null, '', newHash);
+
+  // Apply bridge effects to crossing lines
+  applyBridges(svg);
 
   // Centre root in viewport
   {

@@ -579,11 +579,6 @@ describe('Descendant mode real render', function() {
         `expected pedigree-collapse ancestor ${id} to have a visible child connector`
       );
     }
-
-    assert.ok(
-      lines.some(line => line.attributes.stroke === '#fff' && Number(line.attributes['stroke-width']) > 1.5),
-      'expected cased graph connector lines so crossings remain legible'
-    );
   });
 
   it('routes graph child branches below the parent couple bar', async function() {
