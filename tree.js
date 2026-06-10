@@ -643,18 +643,11 @@ function renderTree(tree) {
   const shift    = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
   const rootCx   = rootCxRaw + shift;
 
-  const ancestorGraph = currentMode === 'ancestors'
-    ? buildAncestorGraphLayout(ancestorTree, rootCx)
-    : null;
-  const positions = ancestorGraph
-    ? ancestorGraph.nodes
-    : assignAncestorPositions(ancestorTree, rootCx, 0);
-  const posByNode = ancestorGraph
-    ? null
-    : new Map(positions.map(p => [p.node, p]));
-  const posById = ancestorGraph
-    ? new Map(positions.map(p => [p.id, p]))
-    : null;
+  // Always use ancestor graph layout for consistent rendering in both modes
+  const ancestorGraph = buildAncestorGraphLayout(ancestorTree, rootCx);
+  const positions = ancestorGraph.nodes;
+  const posByNode = null;
+  const posById = new Map(positions.map(p => [p.id, p]));
 
   // ── Canvas size ───────────────────────────────────────────
   const rightSpouseNeeded = rightSpouseOffsets.length
@@ -688,89 +681,55 @@ function renderTree(tree) {
   });
 
   // ── Ancestor connectors ───────────────────────────────────
-  if (ancestorGraph) {
-    const edgesByChild = new Map();
-    ancestorGraph.edges.forEach(edge => {
-      if (!edgesByChild.has(edge.childId)) edgesByChild.set(edge.childId, []);
-      edgesByChild.get(edge.childId).push(edge);
-    });
+  const edgesByChild = new Map();
+  ancestorGraph.edges.forEach(edge => {
+    if (!edgesByChild.has(edge.childId)) edgesByChild.set(edge.childId, []);
+    edgesByChild.get(edge.childId).push(edge);
+  });
 
-    edgesByChild.forEach((edges, childId) => {
-      const childPos = posById.get(childId);
-      if (!childPos) return;
-      const childY = Y_ROOT - childPos.depth * ROW_H;
-      const fatherEdge = edges.find(edge => edge.kind === 'father');
-      const motherEdge = edges.find(edge => edge.kind === 'mother');
-      const fpos = fatherEdge ? posById.get(fatherEdge.parentId) : null;
-      const mpos = motherEdge ? posById.get(motherEdge.parentId) : null;
+  edgesByChild.forEach((edges, childId) => {
+    const childPos = posById.get(childId);
+    if (!childPos) return;
+    const childY = Y_ROOT - childPos.depth * ROW_H;
+    const fatherEdge = edges.find(edge => edge.kind === 'father');
+    const motherEdge = edges.find(edge => edge.kind === 'mother');
+    const fpos = fatherEdge ? posById.get(fatherEdge.parentId) : null;
+    const mpos = motherEdge ? posById.get(motherEdge.parentId) : null;
 
-      if (fpos && mpos) {
-        const fatherY = Y_ROOT - fpos.depth * ROW_H;
-        const motherY = Y_ROOT - mpos.depth * ROW_H;
-        const coupleY = Math.min(
-          childY - 8,
-          Math.max(nodeBot(fatherY), nodeBot(motherY)) + Math.round(GAP_Y * 0.5)
-        );
-        const barMid = (fpos.cx + mpos.cx) / 2;
+    if (fpos && mpos) {
+      const fatherY = Y_ROOT - fpos.depth * ROW_H;
+      const motherY = Y_ROOT - mpos.depth * ROW_H;
+      const coupleY = Math.min(
+        childY - 8,
+        Math.max(nodeBot(fatherY), nodeBot(motherY)) + Math.round(GAP_Y * 0.5)
+      );
+      const barMid = (fpos.cx + mpos.cx) / 2;
 
-        drawLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
-        drawLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
-        drawLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
-        if (Math.abs(barMid - childPos.cx) > 0.5) {
-          const branchY = Math.min(childY - 8, coupleY + 16);
-          drawLine(svg, barMid, coupleY, barMid, branchY, '#999');
-          drawLine(svg, barMid, branchY, childPos.cx, branchY, '#999');
-          drawLine(svg, childPos.cx, branchY, childPos.cx, childY, '#999');
-        } else {
-          drawLine(svg, childPos.cx, coupleY, childPos.cx, childY, '#999');
-        }
+      drawLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
+      drawLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
+      drawLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
+      if (Math.abs(barMid - childPos.cx) > 0.5) {
+        const branchY = Math.min(childY - 8, coupleY + 16);
+        drawLine(svg, barMid, coupleY, barMid, branchY, '#999');
+        drawLine(svg, barMid, branchY, childPos.cx, branchY, '#999');
+        drawLine(svg, childPos.cx, branchY, childPos.cx, childY, '#999');
       } else {
-        const parentPos = fpos || mpos;
-        if (!parentPos) return;
-        const parentY = Y_ROOT - parentPos.depth * ROW_H;
-        const color = fpos ? '#999' : '#999';
-        const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
-
-        drawLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
-        if (Math.abs(parentPos.cx - childPos.cx) > 0.5) {
-          drawLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
-        }
-        drawLine(svg, childPos.cx, elbowY, childPos.cx, childY, color);
+        drawLine(svg, childPos.cx, coupleY, childPos.cx, childY, '#999');
       }
-    });
-  } else {
-    positions.forEach(({ node, person, cx, depth }) => {
-      const childY  = Y_ROOT - depth * ROW_H;
-      const parentY = Y_ROOT - (depth + 1) * ROW_H;
-      const midY    = nodeBot(parentY) + Math.round(GAP_Y * 0.5);
-      const fpos = node.father ? posByNode.get(node.father) : null;
-      const mpos = node.mother ? posByNode.get(node.mother) : null;
-      if (!fpos && !mpos) return;
-      if (fpos && mpos) {
-        drawLine(svg, fpos.cx, nodeBot(parentY), fpos.cx, midY, '#999');
-        drawLine(svg, mpos.cx, nodeBot(parentY), mpos.cx, midY, '#999');
-        const barMid = (fpos.cx + mpos.cx) / 2;
-        if (Math.abs(barMid - cx) > 0.5) {
-          const parentLeft = Math.min(fpos.cx, mpos.cx);
-          const parentRight = Math.max(fpos.cx, mpos.cx);
-          const offsetLeft = Math.min(barMid, cx);
-          const offsetRight = Math.max(barMid, cx);
+    } else {
+      const parentPos = fpos || mpos;
+      if (!parentPos) return;
+      const parentY = Y_ROOT - parentPos.depth * ROW_H;
+      const color = fpos ? '#999' : '#999';
+      const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
 
-          if (parentLeft < offsetLeft) drawBar(svg, parentLeft, offsetLeft, midY, '#aaa');
-          if (offsetRight < parentRight) drawBar(svg, offsetRight, parentRight, midY, '#aaa');
-          drawLine(svg, barMid, midY, cx, midY, '#999');
-        } else {
-          drawBar(svg, fpos.cx, mpos.cx, midY, '#aaa');
-          drawLine(svg, cx, midY, cx, childY, '#999');
-        }
-        if (Math.abs(barMid - cx) > 0.5) drawLine(svg, cx, midY, cx, childY, '#999');
-      } else {
-        const parentCx = fpos ? fpos.cx : mpos.cx;
-        const color    = fpos ? '#999' : '#999';
-        drawLine(svg, parentCx, nodeBot(parentY), parentCx, childY, color);
+      drawLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
+      if (Math.abs(parentPos.cx - childPos.cx) > 0.5) {
+        drawLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
       }
-    });
-  }
+      drawLine(svg, childPos.cx, elbowY, childPos.cx, childY, color);
+    }
+  });
 
   // ── Spouses + marriage hlines ─────────────────────────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
