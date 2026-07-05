@@ -96,6 +96,38 @@
       }));
     }
 
+    function familyBlockAnchorOffset(block, anchorOffsets) {
+      return block.hasSpouse ? anchorOffsets[block.fi] : 0;
+    }
+
+    function desiredBlockLeftForAnchor(block, anchorOffset) {
+      return anchorOffset - block.blockWidth / 2;
+    }
+
+    function positionFamilyBlocks(familyBlocks, anchorOffsets, centeredStart = null) {
+      if (!familyBlocks.length) return [];
+
+      if (centeredStart != null) {
+        let cursor = centeredStart;
+        return familyBlocks.map(block => {
+          const blockLeft = cursor;
+          cursor += block.blockWidth + familyGap;
+          return blockLeft;
+        });
+      }
+
+      const blockLefts = familyBlocks.map(block =>
+        desiredBlockLeftForAnchor(block, familyBlockAnchorOffset(block, anchorOffsets))
+      );
+
+      for (let i = 1; i < blockLefts.length; i += 1) {
+        const minLeft = blockLefts[i - 1] + familyBlocks[i - 1].blockWidth + familyGap;
+        if (blockLefts[i] < minLeft) blockLefts[i] = minLeft;
+      }
+
+      return blockLefts;
+    }
+
     function computeLayout(personId, remainingGenerations = Infinity) {
       const cacheKey = `${personId}:${remainingGenerations === Infinity ? 'all' : remainingGenerations}`;
       if (layoutCache.has(cacheKey)) return layoutCache.get(cacheKey);
@@ -116,7 +148,11 @@
         ? anchorOffsets[familyBlocks[0].fi]
         : 0;
       const childrenStart = anchorOffset - totalFamilyWidth / 2;
-      let cursor = childrenStart;
+      const blockLefts = positionFamilyBlocks(
+        familyBlocks,
+        anchorOffsets,
+        familyBlocks.length === 1 ? childrenStart : null
+      );
       let minX = -nodeWidth / 2;
       let maxX = nodeWidth / 2;
 
@@ -129,19 +165,20 @@
         maxX = Math.max(maxX, offset + nodeWidth / 2);
       });
 
-      familyBlocks.forEach(block => {
-        const anchorOffsetForBlock = block.hasSpouse ? anchorOffsets[block.fi] : 0;
+      familyBlocks.forEach((block, blockIndex) => {
+        const anchorOffsetForBlock = familyBlockAnchorOffset(block, anchorOffsets);
+        const shouldUseCompactAnchor = familyBlocks.length === 1;
+        const blockLeft = blockLefts[blockIndex];
         const childBlockLeft = childBlockLeftForFamily(
-          cursor,
+          blockLeft,
           block.blockWidth,
           block.childrenWidth,
           block.childLayouts,
           anchorOffsetForBlock,
-          familyBlocks.length === 1
+          shouldUseCompactAnchor
         );
-        minX = Math.min(minX, cursor, childBlockLeft);
-        maxX = Math.max(maxX, cursor + block.blockWidth, childBlockLeft + block.childrenWidth);
-        cursor += block.blockWidth + familyGap;
+        minX = Math.min(minX, blockLeft, childBlockLeft);
+        maxX = Math.max(maxX, blockLeft + block.blockWidth, childBlockLeft + block.childrenWidth);
       });
 
       const layout = { width: maxX - minX, rootOffset: -minX };
@@ -168,10 +205,26 @@
 
     function assignConnectorLanes(blocks) {
       const constraints = [];
+      const constraintKeys = new Set();
+
+      function hasPath(fromIndex, toIndex, seen = new Set()) {
+        if (fromIndex === toIndex) return true;
+        if (seen.has(fromIndex)) return false;
+        seen.add(fromIndex);
+
+        return constraints.some(([higherIndex, lowerIndex]) =>
+          higherIndex === fromIndex && hasPath(lowerIndex, toIndex, seen)
+        );
+      }
 
       function addConstraint(higherIndex, lowerIndex) {
-        if (higherIndex === lowerIndex) return;
+        if (higherIndex === lowerIndex) return false;
+        const key = `${higherIndex}:${lowerIndex}`;
+        if (constraintKeys.has(key)) return true;
+        if (hasPath(lowerIndex, higherIndex)) return false;
+        constraintKeys.add(key);
         constraints.push([higherIndex, lowerIndex]);
+        return true;
       }
 
       blocks.forEach((block, blockIndex) => {
@@ -190,16 +243,6 @@
         });
       });
 
-      function hasPath(fromIndex, toIndex, seen = new Set()) {
-        if (fromIndex === toIndex) return true;
-        if (seen.has(fromIndex)) return false;
-        seen.add(fromIndex);
-
-        return constraints.some(([higherIndex, lowerIndex]) =>
-          higherIndex === fromIndex && hasPath(lowerIndex, toIndex, seen)
-        );
-      }
-
       blocks.forEach((block, blockIndex) => {
         blocks.forEach((other, otherIndex) => {
           if (blockIndex >= otherIndex) return;
@@ -207,7 +250,7 @@
           if (hasPath(otherIndex, blockIndex)) {
             addConstraint(otherIndex, blockIndex);
           } else {
-            addConstraint(blockIndex, otherIndex);
+            addConstraint(blockIndex, otherIndex) || addConstraint(otherIndex, blockIndex);
           }
         });
       });
@@ -242,21 +285,26 @@
       const anchorCxList = familySplit.anchorOffsets.map(offset => parentCx + offset);
       const singleFamilyAnchor = treeLayout.getAnchorForSingleFamily(famBlocks, anchorCxList);
       const childStart = treeLayout.computeChildrenStart(parentCx, singleFamilyAnchor, belowWidth, margin);
+      const relativeBlockLefts = positionFamilyBlocks(
+        famBlocks,
+        familySplit.anchorOffsets,
+        famBlocks.length === 1 ? childStart - parentCx : null
+      );
       const positionedBlocks = [];
-      let cursor = childStart;
 
-      famBlocks.forEach(block => {
-        const anchorCx = block.fam.spouse
+      famBlocks.forEach((block, blockIndex) => {
+        const compactAnchorCx = block.fam.spouse
           ? parentCx + familySplit.anchorOffsets[block.fi]
           : parentCx;
-        const blockLeft = cursor;
+        const blockLeft = parentCx + relativeBlockLefts[blockIndex];
+        const shouldUseCompactAnchor = famBlocks.length === 1;
         const childBlockLeft = childBlockLeftForFamily(
           blockLeft,
           block.blockWidth,
           block.childrenWidth,
           block.childLayouts,
-          anchorCx,
-          famBlocks.length === 1
+          compactAnchorCx,
+          shouldUseCompactAnchor
         );
         const childCenters = [];
         let childCursor = childBlockLeft;
@@ -266,10 +314,17 @@
           childCenters.push(childCx);
           childCursor += block.childLayouts[ci].width + gapX;
         });
+        const spouseCx = block.fam.spouse
+          ? parentCx + familySplit.anchorOffsets[block.fi] * 2
+          : null;
+        const anchorCx = block.fam.spouse
+          ? (parentCx + spouseCx) / 2
+          : parentCx;
 
         positionedBlocks.push({
           ...block,
           anchorCx,
+          spouseCx,
           blockLeft,
           childBlockLeft,
           childCenters,
@@ -278,7 +333,6 @@
           horizontalLeft: Math.min(anchorCx, childCenters[0]),
           horizontalRight: Math.max(anchorCx, childCenters[childCenters.length - 1]),
         });
-        cursor += block.blockWidth + familyGap;
       });
 
       assignConnectorLanes(positionedBlocks);

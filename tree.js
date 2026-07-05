@@ -49,7 +49,7 @@ let descendantGenerationLimit = null;
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
   await loadData();
-  const startId = parseInt(location.hash.slice(1)) || CONFIG.homeId;
+  const startId = resolvePersonId(location.hash.slice(1));
   renderTree(buildTree(startId));
   initSearch();
   initUI();
@@ -734,22 +734,24 @@ function renderTree(tree) {
   // ── Spouses + marriage hlines ─────────────────────────────
   const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
   const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
-  leftFams.forEach((fam, i) => {
-    const scx    = leftSpouseCx[i];
-    const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
-    if (fam.spouse) {
-      placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#999', true);
-    }
-  });
-  rightFams.forEach((fam, i) => {
-    const scx    = rightSpouseCx[i];
-    const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
-    if (fam.spouse) {
-      placeNode(fam.spouse, scx, Y_ROOT);
-      drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#999', true);
-    }
-  });
+  if (currentMode !== 'descendants') {
+    leftFams.forEach((fam, i) => {
+      const scx    = leftSpouseCx[i];
+      const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, Y_ROOT);
+        drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#999', true);
+      }
+    });
+    rightFams.forEach((fam, i) => {
+      const scx    = rightSpouseCx[i];
+      const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
+      if (fam.spouse) {
+        placeNode(fam.spouse, scx, Y_ROOT);
+        drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#999', true);
+      }
+    });
+  }
 
   // ── Below root: draw descendants ───────────────────────────
   if (currentMode === 'descendants') {
@@ -760,7 +762,7 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
   if (maxGenerations <= 0) return;
   const rootFamilies = orderedFams.filter(Boolean);
   let depth = 1;
-  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, false, MARGIN, maxGenerations);
+  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, true, MARGIN, maxGenerations);
 
   while (queue.length && depth < maxGenerations) {
     depth += 1;
@@ -781,26 +783,14 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
   const Y_CH = parentY + ROW_H;
   const baseDropY = parentY + ROW_H - 16;
   const familyLayout = descendantLayout.positionChildFamilyBlocks(parentCx, families, remainingGenerations, MARGIN);
-  const { leftFams, rightFams, leftSpouseOffsets, rightSpouseOffsets, positionedBlocks } = familyLayout;
+  const { positionedBlocks } = familyLayout;
 
   if (renderSpouses) {
-    leftFams.forEach((fam, i) => {
-      const scx = parentCx + leftSpouseOffsets[i];
-      const fromCx = i === 0 ? parentCx : parentCx + leftSpouseOffsets[i - 1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, parentY);
-        const hlineY = parentY + Math.round(NODE_H / 2);
-        drawLine(svg, scx, hlineY, fromCx, hlineY, '#999', true);
-      }
-    });
-    rightFams.forEach((fam, i) => {
-      const scx = parentCx + rightSpouseOffsets[i];
-      const fromCx = i === 0 ? parentCx : parentCx + rightSpouseOffsets[i - 1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, parentY);
-        const hlineY = parentY + Math.round(NODE_H / 2);
-        drawLine(svg, fromCx, hlineY, scx, hlineY, '#999', true);
-      }
+    positionedBlocks.forEach(blk => {
+      if (!blk.fam.spouse) return;
+      placeNode(blk.fam.spouse, blk.spouseCx, parentY);
+      const hlineY = parentY + Math.round(NODE_H / 2);
+      drawLine(svg, parentCx, hlineY, blk.spouseCx, hlineY, positionedBlocks.length === 1 ? '#999' : '#aaa', true);
     });
   }
 

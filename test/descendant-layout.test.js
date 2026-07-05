@@ -59,4 +59,21 @@ describe('DescendantLayout', function() {
 
     assert.notStrictEqual(blocks[0].connectorLane, blocks[1].connectorLane);
   });
+
+  it('keeps connector lanes bounded when overlap constraints conflict', function() {
+    const layout = makeLayout();
+    const blocks = [
+      { anchorCx: 998, childCenters: [176, 612], horizontalLeft: 176, horizontalRight: 998 },
+      { anchorCx: 1182, childCenters: [896], horizontalLeft: 896, horizontalRight: 1182 },
+      { anchorCx: 1090, childCenters: [1180], horizontalLeft: 1090, horizontalRight: 1180 },
+      { anchorCx: 1366, childCenters: [1556, 1728, 2084], horizontalLeft: 1366, horizontalRight: 2084 },
+    ];
+
+    layout.assignConnectorLanes(blocks);
+
+    assert.ok(
+      Math.max(...blocks.map(block => block.connectorLane)) < blocks.length,
+      'expected cyclic overlap constraints not to create runaway connector lanes'
+    );
+  });
 });

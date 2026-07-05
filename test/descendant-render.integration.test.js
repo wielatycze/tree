@@ -32,11 +32,19 @@ class FakeElement {
   }
 
   appendChild(child) {
+    child.parentNode = this;
     this.children.push(child);
     return child;
   }
 
   addEventListener() {}
+
+  remove() {
+    if (!this.parentNode) return;
+    const index = this.parentNode.children.indexOf(this);
+    if (index >= 0) this.parentNode.children.splice(index, 1);
+    this.parentNode = null;
+  }
 
   setAttribute(name, value) {
     this.attributes[name] = String(value);
@@ -186,7 +194,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
       innerHeight: 900,
       addEventListener() {},
     },
-    location: { hash: `#${rootId}` },
+    location: { hash: `#~${rootId}` },
     history: { replaceState() {} },
     document: {
       getElementById: elementById,
