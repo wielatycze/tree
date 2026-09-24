@@ -229,6 +229,8 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'descendant-limit-control',
     'descendant-limit-options',
     'tree-documents',
+    'person-context-menu',
+    'context-show-tree',
   ].forEach(elementById);
 
   const modeButtons = [
@@ -319,6 +321,8 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     detailNav: elementById('detail-nav'),
     searchInput: elementById('search-input'),
     searchResults: elementById('search-results'),
+    personContextMenu: elementById('person-context-menu'),
+    contextShowTree: elementById('context-show-tree'),
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -329,6 +333,46 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('opens a person tree from the right-click context menu', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 1);
+    const rootNode = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    const personNode = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('node') && String(child.dataset.id) !== '11083'
+    );
+    let prevented = false;
+
+    rootNode.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 120,
+      clientY: 140,
+      preventDefault() { prevented = true; },
+    });
+
+    assert.strictEqual(prevented, true);
+    assert.strictEqual(fixture.personContextMenu.style.display, 'none');
+    prevented = false;
+
+    personNode.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 120,
+      clientY: 140,
+      preventDefault() { prevented = true; },
+    });
+
+    assert.strictEqual(prevented, true);
+    assert.strictEqual(fixture.personContextMenu.style.display, 'block');
+    assert.strictEqual(fixture.personContextMenu.dataset.personId, String(personNode.dataset.id));
+
+    fixture.contextShowTree.dispatchEvent({ type: 'click' });
+    const newRoot = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    assert.strictEqual(newRoot.dataset.id, personNode.dataset.id);
+    assert.strictEqual(fixture.personContextMenu.style.display, 'none');
+  });
+
   it('loads every search match incrementally as the results are scrolled', async function() {
     const fixture = await renderTreeFixture(1);
     const searchIndex = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/si.json'), 'utf8'));

@@ -615,6 +615,14 @@ function createNode(person, x, y, isRoot = false) {
     person.num != null ? `<span class="node-num">#${person.num}</span>` : '',
   ].join('');
   div.addEventListener('click', () => showDetailPanel(person, div));
+  div.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    if (isRoot) {
+      hidePersonContextMenu();
+      return;
+    }
+    showPersonContextMenu(person, event.clientX, event.clientY);
+  });
   return div;
 }
 
@@ -962,7 +970,26 @@ function showDetailPanel(person, node) {
 
 // ── Navigation ───────────────────────────────────────────────
 
+function hidePersonContextMenu() {
+  const menu = document.getElementById('person-context-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+function showPersonContextMenu(person, clientX, clientY) {
+  const menu = document.getElementById('person-context-menu');
+  menu.dataset.personId = String(person.id);
+  menu.style.display = 'block';
+
+  const menuWidth = menu.offsetWidth || 180;
+  const menuHeight = menu.offsetHeight || 44;
+  const left = Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8));
+  const top = Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
 function navigate(id) {
+  hidePersonContextMenu();
   document.getElementById('detail-panel').style.display = 'none';
   renderTree(buildTree(id));
 }
@@ -1026,6 +1053,23 @@ function initUI() {
     document.getElementById('detail-panel').style.display = 'none';
     document.querySelectorAll('.node.is-selected').forEach(n => n.classList.remove('is-selected'));
   });
+
+  const contextMenu = document.getElementById('person-context-menu');
+  document.getElementById('context-show-tree').addEventListener('click', () => {
+    const personId = Number(contextMenu.dataset.personId);
+    if (!personId) return;
+    navigate(personId);
+  });
+
+  document.addEventListener('click', event => {
+    if (!contextMenu.contains(event.target)) hidePersonContextMenu();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') hidePersonContextMenu();
+  });
+  document.getElementById('canvas-wrap').addEventListener('scroll', hidePersonContextMenu);
+  window.addEventListener('resize', hidePersonContextMenu);
+  window.addEventListener('blur', hidePersonContextMenu);
 
   window.addEventListener('hashchange', () => {
     const hashValue = location.hash.slice(1);
