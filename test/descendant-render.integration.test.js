@@ -366,6 +366,74 @@ describe('Descendant mode real render', function() {
     );
   });
 
+  it('drops #104 third-marriage children from the third marriage segment', async function() {
+    const { nodes, lines } = await renderTreeFixture(1156, 'descendants', 1);
+    const root = nodes.find(node => node.id === '1156');
+    const secondWife = nodes.find(node => node.id === '2640');
+    const thirdWife = nodes.find(node => node.id === '12631');
+    const thirdMarriageChildren = ['1388', '3200', '4329']
+      .map(id => nodes.find(node => node.id === id));
+
+    assert.ok(root && secondWife && thirdWife, 'expected #104 and all spouses to render');
+    assert.ok(thirdMarriageChildren.every(Boolean), 'expected all third-marriage children to render');
+
+    const secondWifeCx = secondWife.left + NODE_W / 2;
+    const thirdWifeCx = thirdWife.left + NODE_W / 2;
+    const thirdMarriageAnchorCx = (secondWifeCx + thirdWifeCx) / 2;
+    const marriageY = root.top + NODE_H / 2;
+    const thirdMarriageLine = lines.find(line =>
+      line.attributes['stroke-dasharray'] === '5,4' &&
+      lineNumber(line, 'y1') === marriageY &&
+      lineNumber(line, 'y2') === marriageY &&
+      Math.min(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === secondWifeCx &&
+      Math.max(lineNumber(line, 'x1'), lineNumber(line, 'x2')) === thirdWifeCx
+    );
+    const child = thirdMarriageChildren[0];
+    const childCx = child.left + NODE_W / 2;
+    const childLine = lines.find(line =>
+      line.attributes.stroke === '#999' &&
+      lineNumber(line, 'x1') === childCx &&
+      lineNumber(line, 'x2') === childCx &&
+      lineNumber(line, 'y2') === child.top
+    );
+    const familyStub = childLine && lines.find(line =>
+      line.attributes.stroke === '#999' &&
+      lineNumber(line, 'x1') === thirdMarriageAnchorCx &&
+      lineNumber(line, 'x2') === thirdMarriageAnchorCx &&
+      lineNumber(line, 'y1') === marriageY &&
+      lineNumber(line, 'y2') === lineNumber(childLine, 'y1')
+    );
+
+    assert.ok(thirdMarriageLine, 'expected wife 2 and wife 3 to have their own marriage segment');
+    assert.ok(childLine, 'expected a connector into a third-marriage child');
+    assert.ok(familyStub, 'expected third-marriage children to drop from that segment midpoint');
+    assert.ok(
+      thirdMarriageAnchorCx > secondWife.left + NODE_W,
+      'expected the third-marriage child line not to emerge from wife 2 card'
+    );
+  });
+
+  it('keeps descendant child connectors out of spouse ~734 card', async function() {
+    const { nodes, lines } = await renderTreeFixture(1156, 'descendants');
+    const spouse = nodes.find(node => node.id === '734');
+
+    assert.ok(spouse, 'expected spouse ~734 to render in the #104 tree');
+    const crossings = lines.filter(line =>
+      line.attributes.stroke === '#999' && lineCrossesNodeInterior(line, spouse)
+    );
+
+    assert.deepStrictEqual(
+      crossings.map(line => ({
+        x1: lineNumber(line, 'x1'),
+        y1: lineNumber(line, 'y1'),
+        x2: lineNumber(line, 'x2'),
+        y2: lineNumber(line, 'y2'),
+      })),
+      [],
+      'expected child connectors not to cross spouse ~734 card'
+    );
+  });
+
   it('limits descendants mode to one descendant generation', async function() {
     const { nodes, descendantLimitOptions } = await renderTreeFixture(11083, 'descendants', 1);
     const root = nodes.find(node => node.className.includes('is-root'));

@@ -803,7 +803,15 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
       if (!blk.fam.spouse) return;
       placeNode(blk.fam.spouse, blk.spouseCx, parentY);
       const hlineY = parentY + Math.round(NODE_H / 2);
-      drawLine(svg, parentCx, hlineY, blk.spouseCx, hlineY, positionedBlocks.length === 1 ? '#999' : '#aaa', true);
+      drawLine(
+        svg,
+        blk.marriageFromCx,
+        hlineY,
+        blk.spouseCx,
+        hlineY,
+        positionedBlocks.length === 1 ? '#999' : '#aaa',
+        true
+      );
     });
   }
 
@@ -813,10 +821,23 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     blk.stubStartY = blk.fam.spouse ? parentY + Math.round(NODE_H / 2) : nodeBot(parentY);
   });
 
-  const effectiveLaneGap = descendantLayout.connectorLaneGap(positionedBlocks, baseDropY);
+  const familyRowBottom = positionedBlocks.reduce((bottom, blk) => {
+    if (!blk.fam.spouse) return bottom;
+    return Math.max(bottom, renderedNodeBottom(blk.fam.spouse.id, parentY));
+  }, renderedNodeBottom(parent.id, parentY));
+  const minimumDropY = familyRowBottom + 8;
+  const effectiveLaneGap = descendantLayout.connectorLaneGap(
+    positionedBlocks,
+    baseDropY,
+    minimumDropY
+  );
 
   positionedBlocks.forEach((blk) => {
-    const familyDropY = Math.max(blk.stubStartY + 8, baseDropY - blk.connectorLane * effectiveLaneGap);
+    const familyDropY = Math.max(
+      minimumDropY,
+      blk.stubStartY + 8,
+      baseDropY - blk.connectorLane * effectiveLaneGap
+    );
     const key = `${blk.anchorCx},${blk.stubStartY},${familyDropY}`;
 
     if (!drawnAnchors.has(key)) {

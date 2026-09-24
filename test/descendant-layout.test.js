@@ -48,6 +48,21 @@ describe('DescendantLayout', function() {
     assert.strictEqual(left, 0);
   });
 
+  it('anchors later marriages between consecutive spouse cards', function() {
+    const layout = makeLayout();
+    const families = [
+      { spouse: { id: 1 }, children: [] },
+      { spouse: { id: 2 }, children: [] },
+      { spouse: { id: 3 }, children: [] },
+    ];
+
+    const split = layout.splitFamilies(families);
+
+    assert.deepStrictEqual(split.spouseOffsets, [-184, 184, 368]);
+    assert.deepStrictEqual(split.marriageFromOffsets, [0, 0, 184]);
+    assert.deepStrictEqual(split.anchorOffsets, [-92, 92, 276]);
+  });
+
   it('assigns different connector lanes to separate family blocks', function() {
     const layout = makeLayout();
     const blocks = [
@@ -75,5 +90,17 @@ describe('DescendantLayout', function() {
       Math.max(...blocks.map(block => block.connectorLane)) < blocks.length,
       'expected cyclic overlap constraints not to create runaway connector lanes'
     );
+  });
+
+  it('keeps the highest connector lane below the spouse row', function() {
+    const layout = makeLayout();
+    const blocks = [
+      { connectorLane: 0, stubStartY: 572 },
+      { connectorLane: 3, stubStartY: 572 },
+    ];
+
+    const gap = layout.connectorLaneGap(blocks, 680, 624);
+
+    assert.strictEqual(680 - 3 * gap, 624);
   });
 });

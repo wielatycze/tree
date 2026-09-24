@@ -58,12 +58,39 @@
       const rightSpouseOffsets = rightFams.map((_, i) =>
         nodeWidth / 2 + spouseGap + nodeWidth / 2 + i * (nodeWidth + spouseGap)
       );
-      const anchorOffsets = [
-        ...leftSpouseOffsets.map(offset => offset / 2),
-        ...rightSpouseOffsets.map(offset => offset / 2),
-      ];
+      const spouseOffsets = [...leftSpouseOffsets, ...rightSpouseOffsets];
+      const marriageFromOffsets = [];
+      const anchorOffsets = [];
+      let previousLeftSpouseOffset = 0;
+      let previousRightSpouseOffset = 0;
 
-      return { orderedFams, leftFams, rightFams, leftSpouseOffsets, rightSpouseOffsets, anchorOffsets };
+      orderedFams.forEach((fam, index) => {
+        if (!fam.spouse) {
+          marriageFromOffsets.push(0);
+          anchorOffsets.push(0);
+          return;
+        }
+
+        const spouseOffset = spouseOffsets[index];
+        const isLeft = index < leftFams.length;
+        const fromOffset = isLeft ? previousLeftSpouseOffset : previousRightSpouseOffset;
+        marriageFromOffsets.push(fromOffset);
+        anchorOffsets.push((fromOffset + spouseOffset) / 2);
+
+        if (isLeft) previousLeftSpouseOffset = spouseOffset;
+        else previousRightSpouseOffset = spouseOffset;
+      });
+
+      return {
+        orderedFams,
+        leftFams,
+        rightFams,
+        leftSpouseOffsets,
+        rightSpouseOffsets,
+        spouseOffsets,
+        marriageFromOffsets,
+        anchorOffsets,
+      };
     }
 
     function childBlockLeftForFamily(blockLeft, blockWidth, childrenWidth, childLayouts, anchorOffset, allowOverflow = false) {
@@ -315,16 +342,18 @@
           childCursor += block.childLayouts[ci].width + gapX;
         });
         const spouseCx = block.fam.spouse
-          ? parentCx + familySplit.anchorOffsets[block.fi] * 2
+          ? parentCx + familySplit.spouseOffsets[block.fi]
           : null;
-        const anchorCx = block.fam.spouse
-          ? (parentCx + spouseCx) / 2
-          : parentCx;
+        const marriageFromCx = block.fam.spouse
+          ? parentCx + familySplit.marriageFromOffsets[block.fi]
+          : null;
+        const anchorCx = block.fam.spouse ? compactAnchorCx : parentCx;
 
         positionedBlocks.push({
           ...block,
           anchorCx,
           spouseCx,
+          marriageFromCx,
           blockLeft,
           childBlockLeft,
           childCenters,
@@ -339,10 +368,13 @@
       return { ...familySplit, famBlocks, positionedBlocks, belowWidth };
     }
 
-    function connectorLaneGap(blocks, baseDropY) {
+    function connectorLaneGap(blocks, baseDropY, minimumDropY = null) {
       const gap = blocks.reduce((currentGap, block) => {
         if (!block.connectorLane) return currentGap;
-        return Math.min(currentGap, (baseDropY - block.stubStartY - 8) / block.connectorLane);
+        const availableHeight = minimumDropY == null
+          ? baseDropY - block.stubStartY - 8
+          : baseDropY - minimumDropY;
+        return Math.min(currentGap, availableHeight / block.connectorLane);
       }, stagger);
       return Math.max(4, Math.min(stagger, gap));
     }
