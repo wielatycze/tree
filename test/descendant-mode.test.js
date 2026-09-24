@@ -145,23 +145,9 @@ describe('Descendant mode line connections', function() {
     assert.strictEqual(spouseSpan, 336, 'Spouse spacing should be NODE_W + SP_GAP + NODE_W');
   });
 
-  it('blocks never overlap because they are positioned left-to-right with GAP_X separation', function() {
-    // Block 1: positioned at cursor=0, width=500
-    // Block 2: positioned at cursor=0+500+GAP_X=520, width=400
-    // Block 3: positioned at cursor=520+400+GAP_X=940, width=300
-    
-    const block1Left = 0;
-    const block1Width = 500;
-    const block2Left = block1Left + block1Width + GAP_X;
-    const block2Width = 400;
-    const block3Left = block2Left + block2Width + GAP_X;
-    
-    assert.strictEqual(block2Left, 520);
-    assert.strictEqual(block3Left, 940);
-    
-    // No overlap: block1 ends before block2 starts
-    assert.ok(block1Left + block1Width + GAP_X <= block2Left);
-    // No overlap: block2 ends before block3 starts
-    assert.ok(block2Left + block2Width + GAP_X <= block3Left);
+  it('uses a larger gap between families than between siblings', function() {
+    assert.strictEqual(GAP_X, 20);
+    assert.strictEqual(FAM_GAP, 40);
+    assert.ok(FAM_GAP > GAP_X);
   });
 });
