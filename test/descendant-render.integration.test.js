@@ -10,6 +10,7 @@ const NODE_W = 152;
 const NODE_H = 88;
 const GAP_X = 20;
 const SP_GAP = 32;
+const FAM_GAP = 40;
 const ROW_H = 168;
 
 class FakeElement {
@@ -454,6 +455,25 @@ describe('Descendant mode real render', function() {
       nikolai.left - prokhor.left,
       NODE_W + GAP_X,
       'expected brothers without a visible subtree between them to use the standard sibling gap'
+    );
+  });
+
+  it('keeps Mavra one family gap from both adjacent siblings in #2287', async function() {
+    const { nodes } = await renderTreeFixture(1162, 'descendants');
+    const anna = nodes.find(node => node.id === '10559');
+    const mavra = nodes.find(node => node.id === '2471');
+    const sergey = nodes.find(node => node.id === '10561');
+
+    assert.ok(anna && mavra && sergey, 'expected Mavra and both adjacent siblings to render');
+    assert.strictEqual(
+      mavra.left - anna.left,
+      NODE_W + FAM_GAP,
+      'expected the family gap between Anna and Mavra'
+    );
+    assert.strictEqual(
+      sergey.left - mavra.left,
+      NODE_W + FAM_GAP,
+      'expected the family gap between Mavra and Sergey'
     );
   });
 

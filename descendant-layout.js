@@ -113,8 +113,7 @@
         const childrenWidth = childLayouts.length
           ? childLayouts.reduce((sum, layout) => sum + layout.width, 0) + (childLayouts.length - 1) * gapX
           : nodeWidth;
-        const spouseSpan = fam.spouse ? nodeWidth + spouseGap + nodeWidth : nodeWidth;
-        const blockWidth = Math.max(childrenWidth, spouseSpan, nodeWidth);
+        const blockWidth = Math.max(childrenWidth, nodeWidth);
         return {
           fam,
           fi,

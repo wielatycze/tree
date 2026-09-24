@@ -90,6 +90,19 @@ describe('DescendantLayout', function() {
     });
   });
 
+  it('does not add parent-row spouse width to a child-family block', function() {
+    const layout = makeLayout();
+    const blocks = layout.makeChildFamilyBlocks([
+      {
+        spouse: { id: 2 },
+        children: [{ id: 3, birthYear: 1900 }],
+      },
+    ], 1);
+
+    assert.strictEqual(blocks[0].childrenWidth, NODE_W);
+    assert.strictEqual(blocks[0].blockWidth, NODE_W);
+  });
+
   it('assigns different connector lanes to separate family blocks', function() {
     const layout = makeLayout();
     const blocks = [
