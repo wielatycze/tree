@@ -43,12 +43,38 @@ let BI; // births:       {person_id: [y, m, d]}
 let DE; // deaths:       {person_id: [y, m, d]}
 
 let currentRootId = null;
-let currentMode = 'ancestors';
+let currentMode = 'descendants';
 let descendantGenerationLimit = null;
+
+const TREE_MODES = new Set(['ancestors', 'descendants']);
+
+function modeFromUrl() {
+  const mode = new URLSearchParams(location.search || '').get('mode');
+  return TREE_MODES.has(mode) ? mode : 'descendants';
+}
+
+function syncModeButtons() {
+  document.querySelectorAll('.mode-btn').forEach(button => {
+    button.classList.toggle('mode-btn-active', button.dataset.mode === currentMode);
+  });
+}
+
+function syncTreeUrl(personId) {
+  const params = new URLSearchParams(location.search || '');
+  if (currentMode === 'descendants') params.delete('mode');
+  else params.set('mode', currentMode);
+
+  const search = params.toString();
+  const path = location.pathname || '';
+  const nextUrl = `${path}${search ? `?${search}` : ''}#${getUrlId(personId)}`;
+  const currentUrl = `${path}${location.search || ''}${location.hash || ''}`;
+  if (currentUrl !== nextUrl) history.replaceState(null, '', nextUrl);
+}
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
   await loadData();
+  currentMode = modeFromUrl();
   const startId = resolvePersonId(location.hash.slice(1));
   renderTree(buildTree(startId));
   initSearch();
@@ -858,8 +884,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
                ancestorTree.person.surname, ancestorTree.person.maiden);
   updateDescendantLimitControl(currentRootId);
 
-  const newHash = `#${getUrlId(currentRootId)}`;
-  if (location.hash !== newHash) history.replaceState(null, '', newHash);
+  syncTreeUrl(currentRootId);
 
   // Apply bridge effects to crossing lines
   applyBridges(svg);
@@ -958,10 +983,9 @@ function updateDescendantLimitControl(rootId) {
 }
 
 function setMode(mode) {
+  if (!TREE_MODES.has(mode)) return;
   currentMode = mode;
-  document.querySelectorAll('.mode-btn').forEach(b => {
-    b.classList.toggle('mode-btn-active', b.dataset.mode === mode);
-  });
+  syncModeButtons();
   if (currentRootId) updateDescendantLimitControl(currentRootId);
   if (currentRootId) renderTree(buildTree(currentRootId));
 }
@@ -973,6 +997,7 @@ function initUI() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
+  syncModeButtons();
 
   document.getElementById('detail-close').addEventListener('click', () => {
     document.getElementById('detail-panel').style.display = 'none';

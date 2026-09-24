@@ -187,6 +187,7 @@ function ancestorsOf(rootId, parentsByChild) {
 
 async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit = null, measuredNodeHeights = {}) {
   const elements = new Map();
+  const replacedUrls = [];
   const elementById = id => {
     if (!elements.has(id)) elements.set(id, new FakeElement('div', id, measuredNodeHeights));
     return elements.get(id);
@@ -220,6 +221,11 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
   ];
   modeButtons[0].dataset.mode = 'ancestors';
   modeButtons[1].dataset.mode = 'descendants';
+  const mockLocation = {
+    pathname: '/index.html',
+    search: mode == null ? '' : `?mode=${mode}`,
+    hash: `#~${rootId}`,
+  };
 
   const context = {
     console,
@@ -232,8 +238,17 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
       innerHeight: 900,
       addEventListener() {},
     },
-    location: { hash: `#~${rootId}` },
-    history: { replaceState() {} },
+    location: mockLocation,
+    history: {
+      replaceState(state, title, url) {
+        replacedUrls.push(url);
+        const nextUrl = new URL(url, 'http://tree.test');
+        mockLocation.pathname = nextUrl.pathname;
+        mockLocation.search = nextUrl.search;
+        mockLocation.hash = nextUrl.hash;
+      },
+    },
+    URLSearchParams,
     document: {
       getElementById: elementById,
       createElement: tag => new FakeElement(tag, null, measuredNodeHeights),
@@ -254,7 +269,6 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
 
   const source = fs
     .readFileSync(path.join(process.cwd(), 'tree.js'), 'utf8')
-    .replace("let currentMode = 'ancestors';", `let currentMode = '${mode}';`)
     .replace('let descendantGenerationLimit = null;', `let descendantGenerationLimit = ${descendantLimit == null ? 'null' : descendantLimit};`);
 
   vm.runInNewContext(source, context, { filename: 'tree.js' });
@@ -280,6 +294,8 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     nodes,
     lines,
     canvas,
+    replacedUrls,
+    setMode: context.setMode,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -290,6 +306,32 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('uses descendants mode when the URL does not specify a mode', async function() {
+    const { nodes, replacedUrls, descendantLimitControl } = await renderTreeFixture(11083, null);
+    const root = nodes.find(node => node.className.includes('is-root'));
+    const maxTop = Math.max(...nodes.map(node => node.top));
+
+    assert.ok(maxTop > root.top, 'expected the bare URL to render generations below the root');
+    assert.strictEqual(descendantLimitControl.style.display, 'flex');
+    assert.deepStrictEqual(replacedUrls, [], 'expected the descendants URL to remain mode-free');
+  });
+
+  it('puts the selected mode in the shareable URL', async function() {
+    const fixture = await renderTreeFixture(11083, 'ancestors');
+
+    fixture.setMode('descendants');
+    assert.strictEqual(
+      fixture.replacedUrls.at(-1),
+      '/index.html#~11083'
+    );
+
+    fixture.setMode('ancestors');
+    assert.strictEqual(
+      fixture.replacedUrls.at(-1),
+      '/index.html?mode=ancestors#~11083'
+    );
+  });
+
   it('renders grandchildren and deeper descendants, not only immediate children', async function() {
     const { nodes } = await renderDescendantFixture(11083);
     const rowTops = new Set(nodes.map(node => node.top));
