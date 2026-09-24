@@ -612,10 +612,16 @@ function createNode(person, x, y, isRoot = false) {
     `<div class="node-name">${name}</div>`,
     dates        ? `<div class="node-dates">${dates}</div>` : '',
     person.place ? `<div class="node-place">${person.place}</div>` : '',
-    person.num != null ? `<span class="node-num">#${person.num}</span>` : '',
+    person.num != null
+      ? `<a class="node-num" href="${getDocumentsUrl(person)}" aria-label="Дакументы: #${person.num}" title="Дакументы">#${person.num}</a>`
+      : '',
   ].join('');
-  div.addEventListener('click', () => showDetailPanel(person, div));
+  div.addEventListener('click', event => {
+    if (event.target.closest && event.target.closest('.node-num')) return;
+    showDetailPanel(person, div);
+  });
   div.addEventListener('contextmenu', event => {
+    if (event.target.closest && event.target.closest('.node-num')) return;
     event.preventDefault();
     if (isRoot) {
       hidePersonContextMenu();

@@ -401,10 +401,17 @@ describe('Descendant mode real render', function() {
 
   it('links tree and selected-person document buttons by displayed person ID', async function() {
     const fixture = await renderTreeFixture(1467);
+    const rootCard = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
 
     assert.strictEqual(
       fixture.treeDocuments.href,
       'https://wielatycze.github.io/agg/?id=494'
+    );
+    assert.match(
+      rootCard.innerHTML,
+      /<a class="node-num" href="https:\/\/wielatycze\.github\.io\/agg\/\?id=494"[^>]*>#494<\/a>/
     );
 
     fixture.showDetailPanel(fixture.buildPerson(1467), null);
@@ -415,9 +422,13 @@ describe('Descendant mode real render', function() {
 
   it('omits document links for people without a display ID', async function() {
     const fixture = await renderTreeFixture(1);
+    const rootCard = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
 
     assert.strictEqual(fixture.treeDocuments.style.display, 'none');
     assert.strictEqual(fixture.treeDocuments.href, undefined);
+    assert.doesNotMatch(rootCard.innerHTML, /class="node-num"/);
 
     fixture.showDetailPanel(fixture.buildPerson(1), null);
     assert.strictEqual(fixture.detailNav.children.length, 0);

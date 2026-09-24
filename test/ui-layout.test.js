@@ -41,4 +41,17 @@ describe('UI layout', function() {
     assert.match(html, /id="tree-documents"[^>]*aria-label="Дакументы"[^>]*data-tooltip="Дакументы"/);
     assert.match(html, /<span aria-hidden="true">📚<\/span>/);
   });
+
+  it('styles the person context menu as a compact action menu', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+    const contextMenu = cssRule(css, '#person-context-menu');
+    const contextAction = cssRule(css, '#context-show-tree');
+
+    assert.match(contextMenu, /width:\s*184px/);
+    assert.match(contextMenu, /border-radius:\s*8px/);
+    assert.match(contextAction, /min-height:\s*34px/);
+    assert.match(contextAction, /justify-content:\s*space-between/);
+    assert.match(html, /class="context-menu-arrow"[^>]*>→<\/span>/);
+  });
 });

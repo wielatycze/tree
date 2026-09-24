@@ -336,6 +336,15 @@ svg.connectors {
   padding: 1px 6px;
   margin-top: 3px;
   font-weight: 600;
+  text-decoration: none;
+}
+.node-num:hover {
+  background: #dbe8f7;
+  text-decoration: underline;
+}
+.node-num:focus-visible {
+  outline: 2px solid #5b8fcc;
+  outline-offset: 1px;
 }
 
 /* ── Generation labels ────────────────────────────────────── */
@@ -409,28 +418,52 @@ svg.connectors {
 #person-context-menu {
   position: fixed;
   z-index: 400;
-  min-width: 168px;
-  padding: 4px;
-  border: 1px solid #d0cdc8;
-  border-radius: 6px;
+  width: 184px;
+  padding: 5px;
+  border: 1px solid #d8d5d0;
+  border-radius: 8px;
   background: #fff;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  box-shadow: 0 10px 28px rgba(35,31,28,0.14), 0 2px 5px rgba(35,31,28,0.08);
+  transform-origin: top left;
+  animation: context-menu-in 0.1s ease-out;
 }
 
 #context-show-tree {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
   width: 100%;
-  padding: 7px 10px;
+  min-height: 34px;
+  padding: 7px 9px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
-  color: #222;
+  color: #2d2b29;
   font-size: 12px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
 #context-show-tree:hover,
 #context-show-tree:focus-visible {
-  background: #f0f5ff;
+  background: #f3f2ef;
   outline: none;
+}
+
+.context-menu-arrow {
+  color: #77716b;
+  font-size: 15px;
+  line-height: 1;
+}
+
+#context-show-tree:hover .context-menu-arrow,
+#context-show-tree:focus-visible .context-menu-arrow {
+  color: #4a7fc1;
+}
+
+@keyframes context-menu-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
