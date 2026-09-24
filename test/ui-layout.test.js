@@ -9,6 +9,14 @@ function cssRule(css, selector) {
 }
 
 describe('UI layout', function() {
+  it('uses the Belarusian site name in the tab and toolbar', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+
+    assert.match(html, /<title>Вяляцічы і воласць<\/title>/);
+    assert.match(html, /<h1>Вяляцічы і воласць<\/h1>/);
+    assert.doesNotMatch(html, /Велятичи/);
+  });
+
   it('keeps the person detail panel out of the tree scroll viewport', function() {
     const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
     const canvasWrap = cssRule(css, '#canvas-wrap');

@@ -903,18 +903,19 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
   // Centre root in viewport
   {
+    const wrap = document.getElementById('canvas-wrap');
     const toolbar = document.getElementById('toolbar');
-    const vw = window.innerWidth;
-    const vh = window.innerHeight - (toolbar ? toolbar.offsetHeight : 48);
+    const vw = wrap.clientWidth || window.innerWidth;
+    const vh = wrap.clientHeight || window.innerHeight - (toolbar ? toolbar.offsetHeight : 48);
     const targetX = Math.round(vw / 2);
     const targetY = Math.round(vh / 3);
     const padLeft = Math.max(0, targetX - rootCx);
+    const treeNeedsScrolling = canvasW > vw || canvasH > vh;
     const topAlignDescendants = currentMode === 'descendants' &&
       actualDepth === 0 &&
-      canvasH > vh;
+      treeNeedsScrolling;
     const padTop = topAlignDescendants ? 0 : Math.max(0, targetY - Y_ROOT);
     canvas.style.cssText += `;margin-left:${padLeft}px;margin-top:${padTop}px`;
-    const wrap = document.getElementById('canvas-wrap');
     wrap.scrollLeft = Math.max(0, rootCx + padLeft - targetX);
     wrap.scrollTop  = Math.max(0, Y_ROOT + padTop  - targetY);
   }

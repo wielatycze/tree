@@ -384,6 +384,26 @@ describe('Descendant mode real render', function() {
     );
   });
 
+  it('top-aligns a wide generation-limited tree but still centers a small tree', async function() {
+    const wideLimited = await renderTreeFixture(43, 'descendants', 3);
+    const small = await renderTreeFixture(78, 'descendants');
+
+    assert.ok(
+      numberFromCss(wideLimited.canvas.style.cssText, 'width') > 1400,
+      'expected the limited ~43 tree to require horizontal scrolling'
+    );
+    assert.strictEqual(numberFromCss(wideLimited.canvas.style.cssText, 'margin-top'), 0);
+
+    assert.ok(
+      numberFromCss(small.canvas.style.cssText, 'width') <= 1400,
+      'expected the small comparison tree to fit the viewport width'
+    );
+    assert.ok(
+      numberFromCss(small.canvas.style.cssText, 'margin-top') > 0,
+      'expected a small descendants tree to remain vertically centered'
+    );
+  });
+
   it('renders grandchildren and deeper descendants, not only immediate children', async function() {
     const { nodes } = await renderDescendantFixture(11083);
     const rowTops = new Set(nodes.map(node => node.top));
