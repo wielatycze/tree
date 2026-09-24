@@ -85,12 +85,12 @@ function syncTreeUrl(personId) {
 async function loadData() {
   const fill = document.getElementById('loading-fill');
   const msg  = document.getElementById('loading-msg');
+  msg.textContent = 'Загрузка дадзеных радавода...';
 
   try {
     const results = {};
     for (let i = 0; i < CONFIG.dataFiles.length; i++) {
       const name = CONFIG.dataFiles[i];
-      msg.textContent = `Загрузка ${name}…`;
       const resp = await fetch(CONFIG.dataDir + name + '.json');
       if (!resp.ok) throw new Error(`Failed to fetch ${name}.json (HTTP ${resp.status})`);
       results[name] = await resp.json();

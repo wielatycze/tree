@@ -296,6 +296,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     canvas,
     replacedUrls,
     setMode: context.setMode,
+    loadingMessage: elementById('loading-msg').textContent,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -306,6 +307,12 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('keeps internal data filenames out of the loading message', async function() {
+    const { loadingMessage } = await renderTreeFixture(11083);
+
+    assert.strictEqual(loadingMessage, 'Загрузка дадзеных радавода...');
+  });
+
   it('uses descendants mode when the URL does not specify a mode', async function() {
     const { nodes, replacedUrls, descendantLimitControl } = await renderTreeFixture(11083, null);
     const root = nodes.find(node => node.className.includes('is-root'));
