@@ -52,11 +52,15 @@
       const orderedFams = families.length > 1 ? [families[0], ...families.slice(1)] : families;
       const leftFams = families.length > 1 ? [families[0]] : [];
       const rightFams = families.length > 1 ? families.slice(1) : families;
-      const leftSpouseOffsets = leftFams.map((_, i) =>
-        -(nodeWidth / 2 + spouseGap + nodeWidth / 2 + i * (nodeWidth + spouseGap))
+      let leftSpouseIndex = 0;
+      let rightSpouseIndex = 0;
+      const leftSpouseOffsets = leftFams.map(fam => fam.spouse
+        ? -(nodeWidth + spouseGap + leftSpouseIndex++ * (nodeWidth + spouseGap))
+        : null
       );
-      const rightSpouseOffsets = rightFams.map((_, i) =>
-        nodeWidth / 2 + spouseGap + nodeWidth / 2 + i * (nodeWidth + spouseGap)
+      const rightSpouseOffsets = rightFams.map(fam => fam.spouse
+        ? nodeWidth + spouseGap + rightSpouseIndex++ * (nodeWidth + spouseGap)
+        : null
       );
       const spouseOffsets = [...leftSpouseOffsets, ...rightSpouseOffsets];
       const marriageFromOffsets = [];
@@ -168,6 +172,11 @@
 
       const { orderedFams, leftSpouseOffsets, rightSpouseOffsets, anchorOffsets } = splitFamilies(families);
       const familyBlocks = makeChildFamilyBlocks(orderedFams, remainingGenerations);
+      if (!familyBlocks.length) {
+        const layout = { width: nodeWidth, rootOffset: nodeWidth / 2 };
+        layoutCache.set(cacheKey, layout);
+        return layout;
+      }
       const totalFamilyWidth = familyBlocks.length
         ? familyBlocks.reduce((sum, block) => sum + block.blockWidth, 0) + (familyBlocks.length - 1) * familyGap
         : nodeWidth;

@@ -8,6 +8,8 @@ const DescendantLayout = require('../descendant-layout');
 
 const NODE_W = 152;
 const NODE_H = 88;
+const GAP_X = 20;
+const SP_GAP = 32;
 const ROW_H = 168;
 
 class FakeElement {
@@ -431,6 +433,27 @@ describe('Descendant mode real render', function() {
       })),
       [],
       'expected child connectors not to cross spouse ~734 card'
+    );
+  });
+
+  it('keeps #2287 spouse and sibling gaps compact when nothing visible occupies them', async function() {
+    const { nodes } = await renderTreeFixture(1156, 'descendants');
+    const secondWife = nodes.find(node => node.id === '2470');
+    const spouse734 = nodes.find(node => node.id === '734');
+    const prokhor = nodes.find(node => node.id === '7714');
+    const nikolai = nodes.find(node => node.id === '7715');
+
+    assert.ok(secondWife && spouse734, 'expected both visible spouses of #2287 to render');
+    assert.ok(prokhor && nikolai, 'expected both brothers to render');
+    assert.strictEqual(
+      spouse734.left - secondWife.left,
+      NODE_W + SP_GAP,
+      'expected consecutive spouse cards to use the standard spouse gap'
+    );
+    assert.strictEqual(
+      nikolai.left - prokhor.left,
+      NODE_W + GAP_X,
+      'expected brothers without a visible subtree between them to use the standard sibling gap'
     );
   });
 

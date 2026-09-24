@@ -63,6 +63,33 @@ describe('DescendantLayout', function() {
     assert.deepStrictEqual(split.anchorOffsets, [-92, 92, 276]);
   });
 
+  it('does not reserve a spouse slot for an anonymous family', function() {
+    const layout = makeLayout();
+    const families = [
+      { spouse: { id: 1 }, children: [] },
+      { spouse: { id: 2 }, children: [] },
+      { spouse: null, children: [{ id: 10 }] },
+      { spouse: { id: 3 }, children: [] },
+    ];
+
+    const split = layout.splitFamilies(families);
+
+    assert.deepStrictEqual(split.spouseOffsets, [-184, 184, null, 368]);
+    assert.deepStrictEqual(split.marriageFromOffsets, [0, 0, 0, 184]);
+    assert.deepStrictEqual(split.anchorOffsets, [-92, 92, 0, 276]);
+  });
+
+  it('does not reserve width for a spouse-only branch that is not rendered', function() {
+    const layout = makeLayout({
+      1: [{ spouse: { id: 2 }, children: [] }],
+    });
+
+    assert.deepStrictEqual(layout.computeLayout(1), {
+      width: NODE_W,
+      rootOffset: NODE_W / 2,
+    });
+  });
+
   it('assigns different connector lanes to separate family blocks', function() {
     const layout = makeLayout();
     const blocks = [

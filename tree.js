@@ -613,10 +613,10 @@ function renderTree(tree) {
   const MARGIN  = 20;
   const {
     orderedFams,
-    leftFams,
-    rightFams,
     leftSpouseOffsets,
     rightSpouseOffsets,
+    spouseOffsets,
+    marriageFromOffsets,
   } = descendantLayout.splitFamilies(visualFamilies);
 
   // ── Compute below-root width ───────────────────────────────
@@ -628,8 +628,9 @@ function renderTree(tree) {
   const belowRightNeeded = belowLayout ? belowLayout.width - belowLayout.rootOffset : 0;
 
   // ── Resolve rootCx ────────────────────────────────────────
-  const leftSpouseNeeded = leftSpouseOffsets.length
-    ? -(leftSpouseOffsets[leftSpouseOffsets.length-1] - NODE_W/2) : 0;
+  const visibleLeftSpouseOffsets = leftSpouseOffsets.filter(Number.isFinite);
+  const leftSpouseNeeded = visibleLeftSpouseOffsets.length
+    ? -(visibleLeftSpouseOffsets[visibleLeftSpouseOffsets.length-1] - NODE_W/2) : 0;
   const ancestorBounds = ancestorExtents(ancestorTree);
 
   const rootCxRaw = Math.max(
@@ -650,8 +651,9 @@ function renderTree(tree) {
   const posById = new Map(positions.map(p => [p.id, p]));
 
   // ── Canvas size ───────────────────────────────────────────
-  const rightSpouseNeeded = rightSpouseOffsets.length
-    ? rightSpouseOffsets[rightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
+  const visibleRightSpouseOffsets = rightSpouseOffsets.filter(Number.isFinite);
+  const rightSpouseNeeded = visibleRightSpouseOffsets.length
+    ? visibleRightSpouseOffsets[visibleRightSpouseOffsets.length-1] + NODE_W/2 : NODE_W/2;
   const maxAncCx = positions.reduce((m, p) => Math.max(m, p.cx), rootCx);
 
   const canvasW = Math.ceil(Math.max(
@@ -745,24 +747,13 @@ function renderTree(tree) {
   });
 
   // ── Spouses + marriage hlines ─────────────────────────────
-  const leftSpouseCx  = leftSpouseOffsets.map(o  => rootCx + o);
-  const rightSpouseCx = rightSpouseOffsets.map(o => rootCx + o);
   if (currentMode !== 'descendants') {
-    leftFams.forEach((fam, i) => {
-      const scx    = leftSpouseCx[i];
-      const fromCx = i === 0 ? rootCx : leftSpouseCx[i-1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, Y_ROOT);
-        drawLine(svg, scx, HLINE_Y, fromCx, HLINE_Y, '#999', true);
-      }
-    });
-    rightFams.forEach((fam, i) => {
-      const scx    = rightSpouseCx[i];
-      const fromCx = i === 0 ? rootCx : rightSpouseCx[i-1];
-      if (fam.spouse) {
-        placeNode(fam.spouse, scx, Y_ROOT);
-        drawLine(svg, fromCx, HLINE_Y, scx, HLINE_Y, '#999', true);
-      }
+    orderedFams.forEach((fam, i) => {
+      if (!fam.spouse) return;
+      const spouseCx = rootCx + spouseOffsets[i];
+      const marriageFromCx = rootCx + marriageFromOffsets[i];
+      placeNode(fam.spouse, spouseCx, Y_ROOT);
+      drawLine(svg, marriageFromCx, HLINE_Y, spouseCx, HLINE_Y, '#999', true);
     });
   }
 
