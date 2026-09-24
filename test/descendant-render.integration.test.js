@@ -332,6 +332,17 @@ describe('Descendant mode real render', function() {
     );
   });
 
+  it('does not vertically center a tall descendants tree with no ancestors', async function() {
+    const descendants = await renderTreeFixture(43, 'descendants');
+    const ancestors = await renderTreeFixture(43, 'ancestors');
+
+    assert.strictEqual(numberFromCss(descendants.canvas.style.cssText, 'margin-top'), 0);
+    assert.ok(
+      numberFromCss(ancestors.canvas.style.cssText, 'margin-top') > 0,
+      'expected the ancestor-only view to keep centering its lone root'
+    );
+  });
+
   it('renders grandchildren and deeper descendants, not only immediate children', async function() {
     const { nodes } = await renderDescendantFixture(11083);
     const rowTops = new Set(nodes.map(node => node.top));

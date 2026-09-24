@@ -897,7 +897,10 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     const targetX = Math.round(vw / 2);
     const targetY = Math.round(vh / 3);
     const padLeft = Math.max(0, targetX - rootCx);
-    const padTop  = Math.max(0, targetY - Y_ROOT);
+    const topAlignDescendants = currentMode === 'descendants' &&
+      actualDepth === 0 &&
+      canvasH > vh;
+    const padTop = topAlignDescendants ? 0 : Math.max(0, targetY - Y_ROOT);
     canvas.style.cssText += `;margin-left:${padLeft}px;margin-top:${padTop}px`;
     const wrap = document.getElementById('canvas-wrap');
     wrap.scrollLeft = Math.max(0, rootCx + padLeft - targetX);
