@@ -27,6 +27,9 @@ class FakeElement {
     this.scrollTop = 0;
     this._innerHTML = '';
     this.measuredNodeHeights = measuredNodeHeights;
+    this.listeners = {};
+    this.clientHeight = 0;
+    this.scrollHeight = 0;
     this.style = { cssText: '', display: '', width: '' };
     this.classList = {
       add() {},
@@ -41,7 +44,15 @@ class FakeElement {
     return child;
   }
 
-  addEventListener() {}
+  addEventListener(type, listener) {
+    if (!this.listeners[type]) this.listeners[type] = [];
+    this.listeners[type].push(listener);
+  }
+
+  dispatchEvent(event) {
+    const nextEvent = { ...event, target: event.target || this };
+    (this.listeners[event.type] || []).forEach(listener => listener(nextEvent));
+  }
 
   get offsetHeight() {
     return this.measuredNodeHeights[this.dataset.id] || this._offsetHeight;
@@ -212,7 +223,6 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'detail-info',
     'detail-nav',
     'detail-panel',
-    'btn-home',
     'detail-close',
     'search-input',
     'search-results',
@@ -307,6 +317,8 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     loadingMessage: elementById('loading-msg').textContent,
     treeDocuments: elementById('tree-documents'),
     detailNav: elementById('detail-nav'),
+    searchInput: elementById('search-input'),
+    searchResults: elementById('search-results'),
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -317,6 +329,32 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('loads every search match incrementally as the results are scrolled', async function() {
+    const fixture = await renderTreeFixture(1);
+    const searchIndex = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/si.json'), 'utf8'));
+    const expectedMatches = searchIndex.filter(row =>
+      row.slice(2, 6).filter(Boolean).some(value => value.toLowerCase().includes('анна'))
+    ).length;
+
+    fixture.searchInput.value = 'анна';
+    fixture.searchInput.dispatchEvent({ type: 'input' });
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    assert.strictEqual(fixture.searchResults.children.length, 20);
+
+    for (let guard = 0; guard < 100; guard += 1) {
+      const before = fixture.searchResults.children.length;
+      fixture.searchResults.clientHeight = 260;
+      fixture.searchResults.scrollHeight = before * 40;
+      fixture.searchResults.scrollTop = Math.max(0, fixture.searchResults.scrollHeight - 260);
+      fixture.searchResults.dispatchEvent({ type: 'scroll' });
+      if (fixture.searchResults.children.length === before) break;
+    }
+
+    assert.ok(expectedMatches > 50, 'expected this query to exercise the old hard result cap');
+    assert.strictEqual(fixture.searchResults.children.length, expectedMatches);
+  });
+
   it('links tree and selected-person document buttons by displayed person ID', async function() {
     const fixture = await renderTreeFixture(1467);
 

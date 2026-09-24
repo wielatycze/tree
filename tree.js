@@ -1016,8 +1016,6 @@ function setMode(mode) {
 }
 
 function initUI() {
-  document.getElementById('btn-home').addEventListener('click', () => navigate(CONFIG.homeId));
-
   // Mode buttons
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
@@ -1042,7 +1040,33 @@ function initUI() {
 function initSearch() {
   const input   = document.getElementById('search-input');
   const results = document.getElementById('search-results');
+  const pageSize = 20;
   let debounce  = null;
+  let matches = [];
+  let renderedCount = 0;
+
+  function appendMatches() {
+    const nextMatches = matches.slice(renderedCount, renderedCount + pageSize);
+
+    nextMatches.forEach(({ r }) => {
+      const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
+      const name = formatName(given, patronymic, surname, maiden) || `Асоба #${id}`;
+      const div  = document.createElement('div');
+      div.className = 'search-result';
+      div.innerHTML = `
+        <div class="search-result-name">${name}</div>
+        <div class="search-result-sub">${surname || ''}${birthYear ? ' н.' + birthYear : ''} ${sex === 1 ? 'муж.' : 'жан.'}</div>
+      `.trim();
+      div.addEventListener('click', () => {
+        results.style.display = 'none';
+        input.value = '';
+        navigate(id);
+      });
+      results.appendChild(div);
+    });
+
+    renderedCount += nextMatches.length;
+  }
 
   input.addEventListener('input', () => {
     clearTimeout(debounce);
@@ -1053,7 +1077,7 @@ function initSearch() {
       // Split query into words; every word must match somewhere in the name fields
       const words = raw.split(/\s+/).filter(Boolean);
 
-      const matches = [];
+      matches = [];
       for (const r of SI) {
         const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
         const fields = [given, patronymic, surname, maiden]
@@ -1071,7 +1095,6 @@ function initSearch() {
           s + (fields.some(f => f.startsWith(w)) ? 1 : 0), 0
         );
         matches.push({ r, score });
-        if (matches.length >= 50) break; // collect candidates then sort
       }
 
       // Sort: higher score first, then by birth year
@@ -1081,26 +1104,16 @@ function initSearch() {
 
       results.innerHTML = '';
       if (!matches.length) { results.style.display = 'none'; return; }
-
-      matches.slice(0, 10).forEach(({ r }) => {
-        const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
-        const name = formatName(given, patronymic, surname, maiden) || `Асоба #${id}`;
-        const div  = document.createElement('div');
-        div.className = 'search-result';
-        div.innerHTML = `
-          <div class="search-result-name">${name}</div>
-          <div class="search-result-sub">${surname || ''}${birthYear ? ' н.' + birthYear : ''} ${sex === 1 ? 'муж.' : 'жан.'}</div>
-        `.trim();
-        div.addEventListener('click', () => {
-          results.style.display = 'none';
-          input.value = '';
-          navigate(id);
-        });
-        results.appendChild(div);
-      });
-
+      renderedCount = 0;
+      results.scrollTop = 0;
+      appendMatches();
       results.style.display = 'block';
     }, 250);
+  });
+
+  results.addEventListener('scroll', () => {
+    const nearBottom = results.scrollTop + results.clientHeight >= results.scrollHeight - 40;
+    if (nearBottom && renderedCount < matches.length) appendMatches();
   });
 
   document.addEventListener('click', e => {

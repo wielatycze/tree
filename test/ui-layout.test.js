@@ -15,6 +15,7 @@ describe('UI layout', function() {
     assert.match(html, /<title>Вяляцічы і воласць<\/title>/);
     assert.match(html, /<h1>Вяляцічы і воласць<\/h1>/);
     assert.doesNotMatch(html, /Велятичи/);
+    assert.doesNotMatch(html, /id="btn-home"|>Галоўная<\/button>/);
   });
 
   it('keeps the person detail panel out of the tree scroll viewport', function() {
