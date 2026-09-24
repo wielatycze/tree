@@ -87,6 +87,7 @@ describe('DescendantLayout', function() {
     assert.deepStrictEqual(layout.computeLayout(1), {
       width: NODE_W,
       rootOffset: NODE_W / 2,
+      contours: [{ left: -NODE_W / 2, right: NODE_W / 2 }],
     });
   });
 
@@ -101,6 +102,84 @@ describe('DescendantLayout', function() {
 
     assert.strictEqual(blocks[0].childrenWidth, NODE_W);
     assert.strictEqual(blocks[0].blockWidth, NODE_W);
+  });
+
+  it('packs a leaf next to a deep sibling using only their shared row', function() {
+    const layout = makeLayout();
+    const packed = layout.packChildLayouts([
+      {
+        width: NODE_W,
+        rootOffset: NODE_W / 2,
+        contours: [{ left: -NODE_W / 2, right: NODE_W / 2 }],
+      },
+      {
+        width: 1012,
+        rootOffset: 414,
+        contours: [
+          { left: -NODE_W / 2, right: NODE_W / 2 + NODE_W + SP_GAP },
+          { left: -414, right: 598 },
+        ],
+      },
+    ]);
+
+    assert.strictEqual(
+      packed.rootOffsets[1] - packed.rootOffsets[0],
+      NODE_W + GAP_X
+    );
+  });
+
+  it('packs family blocks by their shared generation contours', function() {
+    const layout = makeLayout();
+    const blocks = [
+      {
+        blockWidth: 1000,
+        fi: 0,
+        hasSpouse: true,
+        childContours: [
+          { left: 424, right: 576 },
+          { left: 0, right: 1000 },
+        ],
+      },
+      {
+        blockWidth: NODE_W,
+        fi: 1,
+        hasSpouse: true,
+        childContours: [{ left: 0, right: NODE_W }],
+      },
+    ];
+
+    const positions = layout.positionFamilyBlocks(blocks, [0, 192]);
+
+    assert.deepStrictEqual(positions, [-500, 116]);
+    assert.strictEqual(
+      positions[1] - (positions[0] + blocks[0].childContours[0].right),
+      FAM_GAP
+    );
+  });
+
+  it('centers multiple packed family contours around the parent', function() {
+    const layout = makeLayout();
+    const blocks = [
+      {
+        blockWidth: NODE_W,
+        fi: 0,
+        hasSpouse: true,
+        childContours: [{ left: 0, right: NODE_W }],
+      },
+      {
+        blockWidth: NODE_W,
+        fi: 1,
+        hasSpouse: true,
+        childContours: [{ left: 0, right: NODE_W }],
+      },
+    ];
+
+    const positions = layout.positionFamilyBlocks(blocks, [-92, 92]);
+    const left = positions[0];
+    const right = positions[1] + NODE_W;
+
+    assert.strictEqual((left + right) / 2, 0);
+    assert.strictEqual(positions[1] - (positions[0] + NODE_W), FAM_GAP);
   });
 
   it('assigns different connector lanes to separate family blocks', function() {

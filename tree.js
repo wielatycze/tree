@@ -840,14 +840,11 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
     if (blk.anchorCx < blk.firstCx) drawLine(svg, blk.anchorCx, familyDropY, blk.firstCx, familyDropY, '#999');
     else if (blk.anchorCx > blk.lastCx) drawLine(svg, blk.lastCx, familyDropY, blk.anchorCx, familyDropY, '#999');
 
-    let childCursor = blk.childBlockLeft;
     blk.children.forEach((child, ci) => {
-      const childLayout = blk.childLayouts[ci];
-      const childCx = childCursor + childLayout.rootOffset;
+      const childCx = blk.childBlockLeft + blk.childRootOffsets[ci];
       placeNode(child, childCx, Y_CH);
       drawLine(svg, childCx, familyDropY, childCx, Y_CH, '#999');
       childPositions.push({ person: child, cx: childCx, y: Y_CH });
-      childCursor += childLayout.width + GAP_X;
     });
   });
 

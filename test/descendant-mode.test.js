@@ -118,35 +118,24 @@ describe('Descendant mode line connections', function() {
     assert.ok(lineStart > lineEnd, 'familyDropY should be below childY (higher Y coordinate)');
   });
 
-  it('descendant mode reserves each child full recursive subtree width', function() {
-    const childSubtreeWidths = [NODE_W, 500, 320, NODE_W];
-    const expectedWidth = childSubtreeWidths.reduce((sum, width) => sum + width, 0)
-      + (childSubtreeWidths.length - 1) * GAP_X;
+  it('sibling-row spacing does not include deeper-only subtree width', function() {
+    const leafRight = NODE_W / 2;
+    const deepSiblingLeftOnSharedRow = -NODE_W / 2;
+    const deepSiblingCx = leafRight + GAP_X - deepSiblingLeftOnSharedRow;
 
-    assert.strictEqual(expectedWidth, 1184, 'Sibling spacing must include descendant subtree widths');
-    assert.ok(
-      expectedWidth > childSubtreeWidths.length * NODE_W + (childSubtreeWidths.length - 1) * GAP_X,
-      'Recursive descendant layouts need more space than one card per child'
-    );
+    assert.strictEqual(deepSiblingCx, NODE_W + GAP_X);
   });
 
-  it('child centers use their subtree root offsets inside reserved blocks', function() {
-    const childLayouts = [
-      { width: 500, rootOffset: 250 },
-      { width: 320, rootOffset: 76 },
-    ];
+  it('child centers use contour-packed root offsets', function() {
+    const childRootOffsets = [242, 414];
     const blockLeft = 100;
 
-    const firstChildCx = blockLeft + childLayouts[0].rootOffset;
-    const secondChildLeft = blockLeft + childLayouts[0].width + GAP_X;
-    const secondChildCx = secondChildLeft + childLayouts[1].rootOffset;
+    const firstChildCx = blockLeft + childRootOffsets[0];
+    const secondChildCx = blockLeft + childRootOffsets[1];
 
-    assert.strictEqual(firstChildCx, 350);
-    assert.strictEqual(secondChildCx, 696);
-    assert.ok(
-      blockLeft + childLayouts[0].width + GAP_X <= secondChildLeft,
-      'Second subtree starts after the first subtree reservation plus the sibling gap'
-    );
+    assert.strictEqual(firstChildCx, 342);
+    assert.strictEqual(secondChildCx, 514);
+    assert.strictEqual(secondChildCx - firstChildCx, NODE_W + GAP_X);
   });
 
   it('single spouse family uses NODE_W + SP_GAP + NODE_W spacing', function() {

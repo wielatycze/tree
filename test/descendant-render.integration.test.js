@@ -477,6 +477,43 @@ describe('Descendant mode real render', function() {
     );
   });
 
+  it('keeps leaf sibling Grigory beside Trofim despite Trofim deep subtree', async function() {
+    const { nodes } = await renderTreeFixture(1593, 'descendants');
+    const grigory = nodes.find(node => node.id === '4834');
+    const trofim = nodes.find(node => node.id === '2388');
+
+    assert.ok(grigory && trofim, 'expected both brothers to render');
+    assert.strictEqual(
+      trofim.left - grigory.left,
+      NODE_W + GAP_X,
+      'expected a normal sibling gap when Grigory has no deeper contour'
+    );
+  });
+
+  it('keeps #104 third-marriage leaves beside the preceding family', async function() {
+    const { nodes } = await renderTreeFixture(1156, 'descendants');
+    const griphina = nodes.find(node => node.id === '4126');
+    const pelageya = nodes.find(node => node.id === '3200');
+
+    assert.ok(griphina && pelageya, 'expected both adjacent half-sisters to render');
+    assert.strictEqual(
+      pelageya.left - griphina.left,
+      NODE_W + FAM_GAP,
+      'expected only the family gap before Pelageya'
+    );
+  });
+
+  it('centers #104 packed descendant contours instead of drifting them right', async function() {
+    const { nodes } = await renderTreeFixture(1156, 'descendants');
+    const root = nodes.find(node => node.id === '1156');
+    const descendants = nodes.filter(node => node.top > root.top);
+    const descendantLeft = Math.min(...descendants.map(node => node.left));
+    const descendantRight = Math.max(...descendants.map(node => node.left + NODE_W));
+    const rootCx = root.left + NODE_W / 2;
+
+    assert.strictEqual((descendantLeft + descendantRight) / 2, rootCx);
+  });
+
   it('limits descendants mode to one descendant generation', async function() {
     const { nodes, descendantLimitOptions } = await renderTreeFixture(11083, 'descendants', 1);
     const root = nodes.find(node => node.className.includes('is-root'));
@@ -507,7 +544,7 @@ describe('Descendant mode real render', function() {
   });
 
   it('keeps child-family connector horizontals from overlapping', async function() {
-    for (const rootId of [3145, 1160, 11083, 748, 508, 1658]) {
+    for (const rootId of [3145, 1156, 1160, 11083, 748, 508, 1658, 1593]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
       const childHorizontals = lines.filter(line =>
         line.attributes.stroke === '#999' &&
@@ -531,7 +568,7 @@ describe('Descendant mode real render', function() {
   });
 
   it('keeps child-family connector verticals from crossing horizontals', async function() {
-    for (const rootId of [3145, 1964, 1160, 11083, 748, 508, 1658]) {
+    for (const rootId of [3145, 1964, 1156, 1160, 11083, 748, 508, 1658, 1593]) {
       const { lines } = await renderTreeFixture(rootId, 'descendants');
       const childLines = lines.filter(line => line.attributes.stroke === '#999');
       const verticals = childLines.filter(line =>
@@ -611,7 +648,7 @@ describe('Descendant mode real render', function() {
   });
 
   it('does not overlap rendered people for wide real descendant trees', async function() {
-    const roots = [11083, 748, 508, 1658];
+    const roots = [11083, 1156, 748, 508, 1658, 1593];
 
     for (const rootId of roots) {
       const { nodes } = await renderDescendantFixture(rootId);
@@ -635,23 +672,24 @@ describe('Descendant mode real render', function() {
   });
 
   it('keeps all descendant people within the computed canvas width', async function() {
-    const rootId = 11083;
     const childrenByParent = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/children.json'), 'utf8'));
-    const expectedDescendants = descendantsOf(rootId, childrenByParent);
-    const { nodes, canvas } = await renderDescendantFixture(rootId);
-    const renderedDescendants = new Set(nodes.map(node => node.id));
-    const canvasWidth = numberFromCss(canvas.style.cssText, 'width');
+    for (const rootId of [11083, 1156, 1593]) {
+      const expectedDescendants = descendantsOf(rootId, childrenByParent);
+      const { nodes, canvas } = await renderDescendantFixture(rootId);
+      const renderedDescendants = new Set(nodes.map(node => node.id));
+      const canvasWidth = numberFromCss(canvas.style.cssText, 'width');
 
-    for (const id of expectedDescendants) {
-      assert.ok(renderedDescendants.has(id), `expected descendant person ${id} to be rendered`);
-    }
+      for (const id of expectedDescendants) {
+        assert.ok(renderedDescendants.has(id), `expected descendant person ${id} to render for root ${rootId}`);
+      }
 
-    for (const node of nodes) {
-      assert.ok(node.left >= 0, `expected person ${node.id} not to render left of canvas`);
-      assert.ok(
-        node.left + NODE_W <= canvasWidth,
-        `expected person ${node.id} not to render beyond canvas width`
-      );
+      for (const node of nodes) {
+        assert.ok(node.left >= 0, `expected person ${node.id} not to render left of canvas for root ${rootId}`);
+        assert.ok(
+          node.left + NODE_W <= canvasWidth,
+          `expected person ${node.id} not to render beyond canvas width for root ${rootId}`
+        );
+      }
     }
   });
 

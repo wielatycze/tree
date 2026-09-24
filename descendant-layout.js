@@ -106,19 +106,93 @@
       return allowOverflow || fitsBlock ? anchoredLeft : centeredLeft;
     }
 
+    function leafLayout() {
+      return {
+        width: nodeWidth,
+        rootOffset: nodeWidth / 2,
+        contours: [{ left: -nodeWidth / 2, right: nodeWidth / 2 }],
+      };
+    }
+
+    function layoutContours(layout) {
+      return layout.contours || [{
+        left: -layout.rootOffset,
+        right: layout.width - layout.rootOffset,
+      }];
+    }
+
+    function mergeContour(contours, depth, left, right) {
+      const existing = contours[depth];
+      if (!existing) {
+        contours[depth] = { left, right };
+        return;
+      }
+      existing.left = Math.min(existing.left, left);
+      existing.right = Math.max(existing.right, right);
+    }
+
+    function packChildLayouts(childLayouts, separation = gapX) {
+      if (!childLayouts.length) {
+        return { width: nodeWidth, rootOffsets: [], contours: [] };
+      }
+
+      const packedContours = [];
+      const rootPositions = [];
+
+      childLayouts.forEach((layout, index) => {
+        const contours = layoutContours(layout);
+        let rootPosition = 0;
+
+        if (index > 0) {
+          rootPosition = -Infinity;
+          contours.forEach((contour, depth) => {
+            const packed = packedContours[depth];
+            if (!packed) return;
+            rootPosition = Math.max(
+              rootPosition,
+              packed.right + separation - contour.left
+            );
+          });
+        }
+
+        contours.forEach((contour, depth) => {
+          mergeContour(
+            packedContours,
+            depth,
+            rootPosition + contour.left,
+            rootPosition + contour.right
+          );
+        });
+        rootPositions.push(rootPosition);
+      });
+
+      const minX = Math.min(...packedContours.filter(Boolean).map(contour => contour.left));
+      const maxX = Math.max(...packedContours.filter(Boolean).map(contour => contour.right));
+
+      return {
+        width: maxX - minX,
+        rootOffsets: rootPositions.map(position => position - minX),
+        contours: packedContours.map(contour => contour && ({
+          left: contour.left - minX,
+          right: contour.right - minX,
+        })),
+      };
+    }
+
     function makeChildFamilyBlocks(orderedFams, remainingGenerations) {
       return orderChildFamilyBlocks(orderedFams.map((fam, fi) => {
         const children = Array.isArray(fam.children) ? fam.children : [];
         const childLayouts = children.map(child => computeLayout(child.id, remainingGenerations - 1));
-        const childrenWidth = childLayouts.length
-          ? childLayouts.reduce((sum, layout) => sum + layout.width, 0) + (childLayouts.length - 1) * gapX
-          : nodeWidth;
+        const packedChildren = packChildLayouts(childLayouts);
+        const childrenWidth = packedChildren.width;
         const blockWidth = Math.max(childrenWidth, nodeWidth);
         return {
           fam,
           fi,
           children,
           childLayouts,
+          childRootOffsets: packedChildren.rootOffsets,
+          childContours: packedChildren.contours,
           childrenWidth,
           blockWidth,
           hasSpouse: !!fam.spouse,
@@ -149,13 +223,34 @@
       const blockLefts = familyBlocks.map(block =>
         desiredBlockLeftForAnchor(block, familyBlockAnchorOffset(block, anchorOffsets))
       );
+      const packedContours = [];
 
-      for (let i = 1; i < blockLefts.length; i += 1) {
-        const minLeft = blockLefts[i - 1] + familyBlocks[i - 1].blockWidth + familyGap;
-        if (blockLefts[i] < minLeft) blockLefts[i] = minLeft;
-      }
+      familyBlocks.forEach((block, index) => {
+        if (index > 0) {
+          let minLeft = -Infinity;
+          block.childContours.forEach((contour, depth) => {
+            const packed = packedContours[depth];
+            if (!packed) return;
+            minLeft = Math.max(minLeft, packed.right + familyGap - contour.left);
+          });
+          blockLefts[index] = Math.max(blockLefts[index], minLeft);
+        }
 
-      return blockLefts;
+        block.childContours.forEach((contour, depth) => {
+          mergeContour(
+            packedContours,
+            depth,
+            blockLefts[index] + contour.left,
+            blockLefts[index] + contour.right
+          );
+        });
+      });
+
+      const occupiedContours = packedContours.filter(Boolean);
+      const minX = Math.min(...occupiedContours.map(contour => contour.left));
+      const maxX = Math.max(...occupiedContours.map(contour => contour.right));
+      const centerShift = -(minX + maxX) / 2;
+      return blockLefts.map(left => left + centerShift);
     }
 
     function computeLayout(personId, remainingGenerations = Infinity) {
@@ -164,15 +259,15 @@
 
       const families = orderFamilies(getFamilies(personId));
       if (!families.length || remainingGenerations <= 0) {
-        const layout = { width: nodeWidth, rootOffset: nodeWidth / 2 };
+        const layout = leafLayout();
         layoutCache.set(cacheKey, layout);
         return layout;
       }
 
-      const { orderedFams, leftSpouseOffsets, rightSpouseOffsets, anchorOffsets } = splitFamilies(families);
+      const { orderedFams, spouseOffsets, anchorOffsets } = splitFamilies(families);
       const familyBlocks = makeChildFamilyBlocks(orderedFams, remainingGenerations);
       if (!familyBlocks.length) {
-        const layout = { width: nodeWidth, rootOffset: nodeWidth / 2 };
+        const layout = leafLayout();
         layoutCache.set(cacheKey, layout);
         return layout;
       }
@@ -188,16 +283,17 @@
         anchorOffsets,
         familyBlocks.length === 1 ? childrenStart : null
       );
-      let minX = -nodeWidth / 2;
-      let maxX = nodeWidth / 2;
+      const contours = [{ left: -nodeWidth / 2, right: nodeWidth / 2 }];
 
-      leftSpouseOffsets.forEach(offset => {
-        minX = Math.min(minX, offset - nodeWidth / 2);
-        maxX = Math.max(maxX, offset + nodeWidth / 2);
-      });
-      rightSpouseOffsets.forEach(offset => {
-        minX = Math.min(minX, offset - nodeWidth / 2);
-        maxX = Math.max(maxX, offset + nodeWidth / 2);
+      familyBlocks.forEach(block => {
+        if (!block.fam.spouse) return;
+        const spouseOffset = spouseOffsets[block.fi];
+        mergeContour(
+          contours,
+          0,
+          spouseOffset - nodeWidth / 2,
+          spouseOffset + nodeWidth / 2
+        );
       });
 
       familyBlocks.forEach((block, blockIndex) => {
@@ -212,11 +308,22 @@
           anchorOffsetForBlock,
           shouldUseCompactAnchor
         );
-        minX = Math.min(minX, blockLeft, childBlockLeft);
-        maxX = Math.max(maxX, blockLeft + block.blockWidth, childBlockLeft + block.childrenWidth);
+        block.childLayouts.forEach((childLayout, childIndex) => {
+          const childCx = childBlockLeft + block.childRootOffsets[childIndex];
+          layoutContours(childLayout).forEach((contour, depth) => {
+            mergeContour(
+              contours,
+              depth + 1,
+              childCx + contour.left,
+              childCx + contour.right
+            );
+          });
+        });
       });
 
-      const layout = { width: maxX - minX, rootOffset: -minX };
+      const minX = Math.min(...contours.filter(Boolean).map(contour => contour.left));
+      const maxX = Math.max(...contours.filter(Boolean).map(contour => contour.right));
+      const layout = { width: maxX - minX, rootOffset: -minX, contours };
       layoutCache.set(cacheKey, layout);
       return layout;
     }
@@ -341,14 +448,7 @@
           compactAnchorCx,
           shouldUseCompactAnchor
         );
-        const childCenters = [];
-        let childCursor = childBlockLeft;
-
-        block.children.forEach((child, ci) => {
-          const childCx = childCursor + block.childLayouts[ci].rootOffset;
-          childCenters.push(childCx);
-          childCursor += block.childLayouts[ci].width + gapX;
-        });
+        const childCenters = block.childRootOffsets.map(offset => childBlockLeft + offset);
         const spouseCx = block.fam.spouse
           ? parentCx + familySplit.spouseOffsets[block.fi]
           : null;
@@ -399,6 +499,8 @@
       pointInsideRange,
       assignConnectorLanes,
       childBlockLeftForFamily,
+      packChildLayouts,
+      positionFamilyBlocks,
     };
   }
 
