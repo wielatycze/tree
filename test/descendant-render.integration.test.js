@@ -66,6 +66,11 @@ class FakeElement {
     return this.attributes[name];
   }
 
+  removeAttribute(name) {
+    delete this.attributes[name];
+    if (name === 'href') delete this.href;
+  }
+
   get innerHTML() {
     return this._innerHTML;
   }
@@ -213,6 +218,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'search-results',
     'descendant-limit-control',
     'descendant-limit-options',
+    'tree-documents',
   ].forEach(elementById);
 
   const modeButtons = [
@@ -296,7 +302,11 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     canvas,
     replacedUrls,
     setMode: context.setMode,
+    showDetailPanel: context.showDetailPanel,
+    buildPerson: context.buildPerson,
     loadingMessage: elementById('loading-msg').textContent,
+    treeDocuments: elementById('tree-documents'),
+    detailNav: elementById('detail-nav'),
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -307,6 +317,30 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('links tree and selected-person document buttons by displayed person ID', async function() {
+    const fixture = await renderTreeFixture(1467);
+
+    assert.strictEqual(
+      fixture.treeDocuments.href,
+      'https://wielatycze.github.io/agg/?id=494'
+    );
+
+    fixture.showDetailPanel(fixture.buildPerson(1467), null);
+    const documentsLink = fixture.detailNav.children.at(-1);
+    assert.strictEqual(documentsLink.textContent, 'Дакументы →');
+    assert.strictEqual(documentsLink.href, 'https://wielatycze.github.io/agg/?id=494');
+  });
+
+  it('omits document links for people without a display ID', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    assert.strictEqual(fixture.treeDocuments.style.display, 'none');
+    assert.strictEqual(fixture.treeDocuments.href, undefined);
+
+    fixture.showDetailPanel(fixture.buildPerson(1), null);
+    assert.strictEqual(fixture.detailNav.children.length, 0);
+  });
+
   it('keeps internal data filenames out of the loading message', async function() {
     const { loadingMessage } = await renderTreeFixture(11083);
 

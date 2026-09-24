@@ -160,6 +160,11 @@ function getUrlId(dbId) {
   return `~${dbId}`;
 }
 
+function getDocumentsUrl(person) {
+  if (person.num == null) return null;
+  return `https://wielatycze.github.io/agg/?id=${encodeURIComponent(person.num)}`;
+}
+
 // ── Data helpers ─────────────────────────────────────────────
 
 /** Format a [year, month, day] date tuple as dd.mm.yyyy */
@@ -879,9 +884,16 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
   // ── Update state ──────────────────────────────────────────
   currentRootId = ancestorTree.person.id;
-  document.getElementById('crumb').textContent =
-    formatName(ancestorTree.person.given, ancestorTree.person.patronymic,
-               ancestorTree.person.surname, ancestorTree.person.maiden);
+  const rootName = formatName(ancestorTree.person.given, ancestorTree.person.patronymic,
+                              ancestorTree.person.surname, ancestorTree.person.maiden);
+  const crumb = document.getElementById('crumb');
+  crumb.textContent = rootName;
+  crumb.title = rootName;
+  const treeDocuments = document.getElementById('tree-documents');
+  const treeDocumentsUrl = getDocumentsUrl(ancestorTree.person);
+  treeDocuments.style.display = treeDocumentsUrl ? '' : 'none';
+  if (treeDocumentsUrl) treeDocuments.href = treeDocumentsUrl;
+  else treeDocuments.removeAttribute('href');
   updateDescendantLimitControl(currentRootId);
 
   syncTreeUrl(currentRootId);
@@ -933,6 +945,15 @@ function showDetailPanel(person, node) {
     btn.textContent = 'Паказаць дрэва →';
     btn.addEventListener('click', () => navigate(person.id));
     nav.appendChild(btn);
+  }
+
+  const documentsUrl = getDocumentsUrl(person);
+  if (documentsUrl) {
+    const documentsLink = document.createElement('a');
+    documentsLink.className = 'nav-btn documents-link';
+    documentsLink.textContent = 'Дакументы →';
+    documentsLink.href = documentsUrl;
+    nav.appendChild(documentsLink);
   }
 
   document.getElementById('detail-panel').style.display = 'flex';

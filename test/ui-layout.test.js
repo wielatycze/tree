@@ -19,4 +19,17 @@ describe('UI layout', function() {
     assert.match(detailPanel, /flex-shrink:\s*0/);
     assert.doesNotMatch(detailPanel, /position:\s*fixed/);
   });
+
+  it('right-aligns the tree person with a compact documents control', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+    const treeContext = cssRule(css, '.tree-context');
+    const documentsLink = cssRule(css, '.tree-documents-link');
+
+    assert.match(treeContext, /margin-left:\s*auto/);
+    assert.match(treeContext, /justify-content:\s*flex-end/);
+    assert.match(documentsLink, /width:\s*30px/);
+    assert.match(html, /id="tree-documents"[^>]*aria-label="Дакументы"[^>]*data-tooltip="Дакументы"/);
+    assert.match(html, /<span aria-hidden="true">📚<\/span>/);
+  });
 });
