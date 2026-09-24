@@ -11,7 +11,7 @@ const NODE_H = 88;
 const ROW_H = 168;
 
 class FakeElement {
-  constructor(tag, id = null) {
+  constructor(tag, id = null, measuredNodeHeights = {}) {
     this.tag = tag;
     this.id = id;
     this.children = [];
@@ -19,10 +19,11 @@ class FakeElement {
     this.dataset = {};
     this.className = '';
     this.textContent = '';
-    this.offsetHeight = 48;
+    this._offsetHeight = 48;
     this.scrollLeft = 0;
     this.scrollTop = 0;
     this._innerHTML = '';
+    this.measuredNodeHeights = measuredNodeHeights;
     this.style = { cssText: '', display: '', width: '' };
     this.classList = {
       add() {},
@@ -38,6 +39,14 @@ class FakeElement {
   }
 
   addEventListener() {}
+
+  get offsetHeight() {
+    return this.measuredNodeHeights[this.dataset.id] || this._offsetHeight;
+  }
+
+  set offsetHeight(value) {
+    this._offsetHeight = value;
+  }
 
   remove() {
     if (!this.parentNode) return;
@@ -96,6 +105,29 @@ function verticalCrossesHorizontal(vertical, horizontal) {
     y < verticalBottom;
 }
 
+function lineCrossesNodeInterior(line, node) {
+  const x1 = lineNumber(line, 'x1');
+  const x2 = lineNumber(line, 'x2');
+  const y1 = lineNumber(line, 'y1');
+  const y2 = lineNumber(line, 'y2');
+  const right = node.left + NODE_W;
+  const bottom = node.top + node.height;
+
+  if (x1 === x2) {
+    return x1 > node.left &&
+      x1 < right &&
+      Math.max(Math.min(y1, y2), node.top) < Math.min(Math.max(y1, y2), bottom);
+  }
+
+  if (y1 === y2) {
+    return y1 > node.top &&
+      y1 < bottom &&
+      Math.max(Math.min(x1, x2), node.left) < Math.min(Math.max(x1, x2), right);
+  }
+
+  return false;
+}
+
 function descendantsOf(rootId, childrenByParent) {
   const seen = new Set([String(rootId)]);
   const queue = [String(rootId)];
@@ -150,10 +182,10 @@ function ancestorsOf(rootId, parentsByChild) {
   return seen;
 }
 
-async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit = null) {
+async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit = null, measuredNodeHeights = {}) {
   const elements = new Map();
   const elementById = id => {
-    if (!elements.has(id)) elements.set(id, new FakeElement('div', id));
+    if (!elements.has(id)) elements.set(id, new FakeElement('div', id, measuredNodeHeights));
     return elements.get(id);
   };
 
@@ -179,7 +211,10 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'descendant-limit-options',
   ].forEach(elementById);
 
-  const modeButtons = [new FakeElement('button'), new FakeElement('button')];
+  const modeButtons = [
+    new FakeElement('button', null, measuredNodeHeights),
+    new FakeElement('button', null, measuredNodeHeights),
+  ];
   modeButtons[0].dataset.mode = 'ancestors';
   modeButtons[1].dataset.mode = 'descendants';
 
@@ -198,8 +233,8 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     history: { replaceState() {} },
     document: {
       getElementById: elementById,
-      createElement: tag => new FakeElement(tag),
-      createElementNS: (namespace, tag) => new FakeElement(tag),
+      createElement: tag => new FakeElement(tag, null, measuredNodeHeights),
+      createElementNS: (namespace, tag) => new FakeElement(tag, null, measuredNodeHeights),
       querySelectorAll: selector => {
         if (selector === '.mode-btn') return modeButtons;
         if (selector === '.node.is-selected') return [];
@@ -230,6 +265,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
       id: String(node.dataset.id),
       left: numberFromCss(node.style.cssText, 'left'),
       top: numberFromCss(node.style.cssText, 'top'),
+      height: Math.max(NODE_H, node.offsetHeight),
       className: node.className,
     }));
 
@@ -312,6 +348,24 @@ describe('Descendant mode real render', function() {
     assert.ok(maxTop <= root.top, 'expected ancestors mode not to render descendants below the root');
   });
 
+  it('keeps ancestor connectors out of the #2160 grandmother card', async function() {
+    const { nodes, lines } = await renderTreeFixture(11083, 'ancestors', null, { '2934': 104 });
+    const grandmother = nodes.find(node => node.id === '2934');
+
+    assert.ok(grandmother, 'expected displayed person #2160 to render');
+    const crossings = lines.filter(line => lineCrossesNodeInterior(line, grandmother));
+    assert.deepStrictEqual(
+      crossings.map(line => ({
+        x1: lineNumber(line, 'x1'),
+        y1: lineNumber(line, 'y1'),
+        x2: lineNumber(line, 'x2'),
+        y2: lineNumber(line, 'y2'),
+      })),
+      [],
+      'expected ancestor connectors not to cross the #2160 card'
+    );
+  });
+
   it('limits descendants mode to one descendant generation', async function() {
     const { nodes, descendantLimitOptions } = await renderTreeFixture(11083, 'descendants', 1);
     const root = nodes.find(node => node.className.includes('is-root'));
@@ -390,8 +444,8 @@ describe('Descendant mode real render', function() {
   });
 
   it('draws a straight connector to a single child when it fits under the family anchor', async function() {
-    const { nodes, lines } = await renderTreeFixture(3145, 'descendants');
-    const child = nodes.find(node => node.id === '4045');
+    const { nodes, lines } = await renderTreeFixture(235, 'descendants');
+    const child = nodes.find(node => node.id === '15772');
     const childCx = child.left + NODE_W / 2;
     const childVertical = lines.find(line =>
       line.attributes.stroke === '#999' &&

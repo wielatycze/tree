@@ -670,9 +670,19 @@ function renderTree(tree) {
   const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
   canvas.appendChild(svg);
 
+  const nodeElementsById = new Map();
+
   function placeNode(person, cx, y, isRoot = false) {
     const node = createNode(person, cx - NODE_W/2, y, isRoot);
-    if (node) canvas.appendChild(node);
+    if (node) {
+      canvas.appendChild(node);
+      nodeElementsById.set(String(person.id), node);
+    }
+  }
+
+  function renderedNodeBottom(personId, y) {
+    const node = nodeElementsById.get(String(personId));
+    return y + Math.max(NODE_H, node ? node.offsetHeight : 0);
   }
 
   // ── Place ancestor nodes ──────────────────────────────────
@@ -699,14 +709,16 @@ function renderTree(tree) {
     if (fpos && mpos) {
       const fatherY = Y_ROOT - fpos.depth * ROW_H;
       const motherY = Y_ROOT - mpos.depth * ROW_H;
+      const fatherBottom = renderedNodeBottom(fpos.id, fatherY);
+      const motherBottom = renderedNodeBottom(mpos.id, motherY);
       const coupleY = Math.min(
         childY - 8,
-        Math.max(nodeBot(fatherY), nodeBot(motherY)) + Math.round(GAP_Y * 0.5)
+        Math.max(fatherBottom, motherBottom) + Math.round(GAP_Y * 0.5)
       );
       const barMid = (fpos.cx + mpos.cx) / 2;
 
-      drawLine(svg, fpos.cx, nodeBot(fatherY), fpos.cx, coupleY, '#999');
-      drawLine(svg, mpos.cx, nodeBot(motherY), mpos.cx, coupleY, '#999');
+      drawLine(svg, fpos.cx, fatherBottom, fpos.cx, coupleY, '#999');
+      drawLine(svg, mpos.cx, motherBottom, mpos.cx, coupleY, '#999');
       drawLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
       if (Math.abs(barMid - childPos.cx) > 0.5) {
         const branchY = Math.min(childY - 8, coupleY + 16);
@@ -720,10 +732,11 @@ function renderTree(tree) {
       const parentPos = fpos || mpos;
       if (!parentPos) return;
       const parentY = Y_ROOT - parentPos.depth * ROW_H;
+      const parentBottom = renderedNodeBottom(parentPos.id, parentY);
       const color = fpos ? '#999' : '#999';
-      const elbowY = Math.min(childY - 8, nodeBot(parentY) + Math.round(GAP_Y * 0.5));
+      const elbowY = Math.min(childY - 8, parentBottom + Math.round(GAP_Y * 0.5));
 
-      drawLine(svg, parentPos.cx, nodeBot(parentY), parentPos.cx, elbowY, color);
+      drawLine(svg, parentPos.cx, parentBottom, parentPos.cx, elbowY, color);
       if (Math.abs(parentPos.cx - childPos.cx) > 0.5) {
         drawLine(svg, parentPos.cx, elbowY, childPos.cx, elbowY, color);
       }
