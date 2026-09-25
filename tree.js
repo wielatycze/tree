@@ -1446,29 +1446,68 @@ function initUI() {
 // ── Search ───────────────────────────────────────────────────
 
 function findPersonMatches(rawQuery) {
-  const words = rawQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const normalize = value => String(value || '')
+    .toLowerCase()
+    .replace(/[()[\]{},/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const query = normalize(rawQuery);
+  const words = query.split(' ').filter(Boolean);
   if (!words.length) return [];
+
+  const isOrderedPrefixMatch = (queryWords, orderedFields) => {
+    let fieldIndex = 0;
+    return queryWords.every(word => {
+      while (fieldIndex < orderedFields.length && !orderedFields[fieldIndex].startsWith(word)) {
+        fieldIndex += 1;
+      }
+      if (fieldIndex >= orderedFields.length) return false;
+      fieldIndex += 1;
+      return true;
+    });
+  };
 
   const matches = [];
   for (const r of SI) {
-    const [, , given, patronymic, surname, maiden] = r;
+    const [, , given, patronymic, surname, maiden, birthYear] = r;
     const fields = [given, patronymic, surname, maiden]
       .filter(Boolean)
-      .map(value => value.toLowerCase());
+      .map(normalize);
     const allMatch = words.every(word =>
       fields.some(field => field.startsWith(word) || field.includes(word))
     );
     if (!allMatch) continue;
 
-    const score = words.reduce((sum, word) =>
-      sum + (fields.some(field => field.startsWith(word)) ? 1 : 0), 0
-    );
-    matches.push({ r, score });
+    const orderedVariants = [
+      [surname, given, patronymic].filter(Boolean).map(normalize),
+    ];
+    if (maiden && maiden !== surname) {
+      orderedVariants.push([maiden, given, patronymic].filter(Boolean).map(normalize));
+    }
+    const displayName = normalize(formatName(given, patronymic, surname, maiden));
+    const nameVariants = [displayName, ...orderedVariants.map(variant => variant.join(' '))];
+    const allPrefix = words.every(word => fields.some(field => field.startsWith(word)));
+    let relevance = 5;
+    if (nameVariants.some(name => name === query)) relevance = 0;
+    else if (nameVariants.some(name => name.startsWith(query))) relevance = 1;
+    else if (nameVariants.some(name => name.includes(query))) relevance = 2;
+    else if (orderedVariants.some(variant => isOrderedPrefixMatch(words, variant))) relevance = 3;
+    else if (allPrefix) relevance = 4;
+
+    matches.push({
+      r,
+      relevance,
+      name: displayName,
+      birthYear: birthYear || Number.MAX_SAFE_INTEGER,
+    });
   }
 
-  matches.sort((a, b) =>
-    b.score - a.score || ((a.r[6] || 9999) - (b.r[6] || 9999))
-  );
+  matches.sort((a, b) => {
+    if (a.relevance !== b.relevance) return a.relevance - b.relevance;
+    const alphabetical = a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+    if (alphabetical) return alphabetical;
+    return a.birthYear - b.birthYear || a.r[0] - b.r[0];
+  });
   return matches;
 }
 

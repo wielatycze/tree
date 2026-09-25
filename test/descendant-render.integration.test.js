@@ -353,6 +353,7 @@ async function renderTreeFixture(
     detailNav: elementById('detail-nav'),
     searchInput: elementById('search-input'),
     searchResults: elementById('search-results'),
+    findPersonMatches: context.findPersonMatches,
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
     contextCompare: elementById('context-compare'),
@@ -742,6 +743,20 @@ describe('Descendant mode real render', function() {
 
     assert.ok(expectedMatches > 50, 'expected this query to exercise the old hard result cap');
     assert.strictEqual(fixture.searchResults.children.length, expectedMatches);
+  });
+
+  it('ranks whole ordered names before unordered field matches', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    const resultIds = Array.from(
+      fixture.findPersonMatches('Павловец Петр С'),
+      match => match.r[0]
+    );
+
+    assert.deepStrictEqual(
+      resultIds.slice(0, 6),
+      [16591, 14577, 2393, 8983, 15851, 11095]
+    );
   });
 
   it('links tree and selected-person document buttons by displayed person ID', async function() {
