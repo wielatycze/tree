@@ -229,6 +229,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'descendant-limit-control',
     'descendant-limit-options',
     'tree-documents',
+    'tree-count',
     'person-context-menu',
     'context-show-tree',
   ].forEach(elementById);
@@ -318,6 +319,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     buildPerson: context.buildPerson,
     loadingMessage: elementById('loading-msg').textContent,
     treeDocuments: elementById('tree-documents'),
+    treeCount: elementById('tree-count'),
     detailNav: elementById('detail-nav'),
     searchInput: elementById('search-input'),
     searchResults: elementById('search-results'),
@@ -333,6 +335,13 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('shows the number of people currently rendered in the tree', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 1);
+    const uniquePeople = new Set(fixture.nodes.map(node => node.id)).size;
+
+    assert.strictEqual(fixture.treeCount.textContent, `Асоб: ${uniquePeople}`);
+  });
+
   it('opens a person tree from the right-click context menu', async function() {
     const fixture = await renderTreeFixture(11083, 'descendants', 1);
     const rootNode = fixture.canvas.children.find(child =>

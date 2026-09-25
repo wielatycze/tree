@@ -903,6 +903,7 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
   const crumb = document.getElementById('crumb');
   crumb.textContent = rootName;
   crumb.title = rootName;
+  document.getElementById('tree-count').textContent = `Асоб: ${nodeElementsById.size}`;
   const treeDocuments = document.getElementById('tree-documents');
   const treeDocumentsUrl = getDocumentsUrl(ancestorTree.person);
   treeDocuments.style.display = treeDocumentsUrl ? '' : 'none';
