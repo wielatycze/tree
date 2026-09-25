@@ -21,6 +21,7 @@
         <col class="col-given">
         <col class="col-patronymic">
         <col class="col-date">
+        <col class="col-marriage">
         <col class="col-date">
         <col class="col-place">
         <col class="col-id">
@@ -31,6 +32,7 @@
           <th><button class="sort-button" type="button" data-sort="given">Імя <span aria-hidden="true"></span></button></th>
           <th><button class="sort-button" type="button" data-sort="patronymic">Імя па бацьку <span aria-hidden="true"></span></button></th>
           <th><button class="sort-button" type="button" data-sort="birth">Нараджэнне <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="marriage">Шлюбы <span aria-hidden="true"></span></button></th>
           <th><button class="sort-button" type="button" data-sort="death">Смерць <span aria-hidden="true"></span></button></th>
           <th><button class="sort-button" type="button" data-sort="place">Месца <span aria-hidden="true"></span></button></th>
           <th><button class="sort-button" type="button" data-sort="id">ID <span aria-hidden="true"></span></button></th>
@@ -45,6 +47,15 @@
               <div class="date-range-sliders">
                 <input class="date-range-input date-range-lower" type="range" data-filter="birthFrom" aria-label="Нараджэнне ад года" disabled>
                 <input class="date-range-input date-range-upper" type="range" data-filter="birthTo" aria-label="Нараджэнне да года" disabled>
+              </div>
+            </div>
+          </th>
+          <th>
+            <div class="date-range-filter" data-date-range="marriage">
+              <output class="date-range-value" data-range-output="marriage"></output>
+              <div class="date-range-sliders">
+                <input class="date-range-input date-range-lower" type="range" data-filter="marriageFrom" aria-label="Шлюб ад года" disabled>
+                <input class="date-range-input date-range-upper" type="range" data-filter="marriageTo" aria-label="Шлюб да года" disabled>
               </div>
             </div>
           </th>

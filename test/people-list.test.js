@@ -20,9 +20,16 @@ describe('People list', function() {
     12: 'Міётча',
   };
   const numbers = { 12: 494 };
+  const marriages = {
+    7: [[31, [1901, 5, 6], []]],
+    12: [
+      [44, [1910, 2, 3], []],
+      [55, [1930, 0, 0], []],
+    ],
+  };
 
   function rows() {
-    return PeopleList.createRows(searchIndex, births, deaths, places, numbers);
+    return PeopleList.createRows(searchIndex, births, deaths, places, numbers, marriages);
   }
 
   it('builds display values and tree links without requiring a display id', function() {
@@ -30,6 +37,7 @@ describe('People list', function() {
 
     assert.strictEqual(maria.surname, 'Шабан (Шишпаренок)');
     assert.strictEqual(maria.birth, '??.06.1890');
+    assert.strictEqual(maria.marriage, '03.02.1910; 1930');
     assert.strictEqual(maria.death, '09.11.1952');
     assert.strictEqual(maria.displayId, '#494');
     assert.strictEqual(maria.urlId, '494');
@@ -51,6 +59,14 @@ describe('People list', function() {
     assert.deepStrictEqual(
       PeopleList.filterRows(people, { deathFrom: '1950', deathTo: '1960' }).map(row => row.id),
       [12]
+    );
+    assert.deepStrictEqual(
+      PeopleList.filterRows(people, { marriageFrom: '1925', marriageTo: '1935' }).map(row => row.id),
+      [12]
+    );
+    assert.deepStrictEqual(
+      PeopleList.filterRows(people, { marriageFrom: '1900', marriageTo: '1905' }).map(row => row.id),
+      [7]
     );
     assert.deepStrictEqual(
       PeopleList.filterRows(people, { id: '#494' }).map(row => row.id),
@@ -76,6 +92,10 @@ describe('People list', function() {
     assert.deepStrictEqual(
       PeopleList.sortRows(people, 'birth', 'desc').map(row => row.id),
       [12, 7, 25]
+    );
+    assert.deepStrictEqual(
+      PeopleList.sortRows(people, 'marriage', 'asc').map(row => row.id),
+      [7, 12, 25]
     );
   });
 });

@@ -77,13 +77,14 @@ describe('UI layout', function() {
     assert.match(treeHtml, /class="btn helper-page-link"[^>]*href="people\.html"[^>]*aria-label="Спіс асоб"/);
     assert.match(treeHtml, /<div id="toolbar">\s*<a class="btn helper-page-link"[\s\S]*?<\/a>\s*<h1>Вяляцічы і воласць<\/h1>/);
     assert.match(peopleHtml, /<table id="people-table">/);
+    assert.match(peopleHtml, /data-sort="birth"[\s\S]*data-sort="marriage"[\s\S]*data-sort="death"/);
     ['surname', 'given', 'patronymic', 'place', 'id'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`data-filter="${field}"`));
     });
-    ['birthFrom', 'birthTo', 'deathFrom', 'deathTo'].forEach(field => {
+    ['birthFrom', 'birthTo', 'marriageFrom', 'marriageTo', 'deathFrom', 'deathTo'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`type="range" data-filter="${field}"`));
     });
-    ['surname', 'given', 'patronymic', 'birth', 'death', 'place', 'id'].forEach(field => {
+    ['surname', 'given', 'patronymic', 'birth', 'marriage', 'death', 'place', 'id'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`data-sort="${field}"`));
     });
     assert.match(peopleJs, /const PAGE_SIZE = 200/);

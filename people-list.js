@@ -30,11 +30,15 @@
     return surname || maiden || '';
   }
 
-  function createRows(searchIndex, births, deaths, places, numbers) {
+  function createRows(searchIndex, births, deaths, places, numbers, marriages = {}) {
     return searchIndex.map(record => {
       const [id, , given, patronymic, surname, maiden] = record;
       const birthDate = births[id] || null;
       const deathDate = deaths[id] || null;
+      const marriageDates = (marriages[id] || [])
+        .map(marriage => marriage[1])
+        .filter(date => date && date[0])
+        .sort((first, second) => dateSortValue(first) - dateSortValue(second));
       const number = numbers[id];
       const displayId = number != null ? `#${number}` : `~${id}`;
       const row = {
@@ -43,11 +47,14 @@
         given: given || '',
         patronymic: patronymic || '',
         birth: formatDate(birthDate),
+        marriage: marriageDates.map(formatDate).join('; '),
         death: formatDate(deathDate),
         place: places[id] || '',
         displayId,
         urlId: number != null ? String(number) : `~${id}`,
         birthSort: dateSortValue(birthDate),
+        marriageSort: marriageDates.length ? dateSortValue(marriageDates[0]) : null,
+        marriageYears: marriageDates.map(date => date[0]),
         deathSort: dateSortValue(deathDate),
         idSort: number != null ? number : id,
       };
@@ -66,10 +73,10 @@
 
   function filterRows(rows, filters) {
     const activeFilters = Object.entries(filters)
-      .filter(([key]) => !/^(birth|death)(From|To)$/.test(key))
+      .filter(([key]) => !/^(birth|marriage|death)(From|To)$/.test(key))
       .map(([key, value]) => [key, normalize(value)])
       .filter(([, value]) => value);
-    const ranges = ['birth', 'death'].map(key => ({
+    const ranges = ['birth', 'marriage', 'death'].map(key => ({
       key,
       from: Number.parseInt(filters[`${key}From`], 10),
       to: Number.parseInt(filters[`${key}To`], 10),
@@ -79,11 +86,13 @@
     return rows.filter(row =>
       activeFilters.every(([key, value]) => row.search[key].includes(value)) &&
       ranges.every(({ key, from, to }) => {
-        const sortValue = row[`${key}Sort`];
-        if (sortValue == null) return false;
-        const year = Math.floor(sortValue / 10000);
-        return (!Number.isFinite(from) || year >= from) &&
-          (!Number.isFinite(to) || year <= to);
+        const years = key === 'marriage'
+          ? row.marriageYears
+          : [row[`${key}Sort`]].filter(value => value != null).map(value => Math.floor(value / 10000));
+        return years.some(year =>
+          (!Number.isFinite(from) || year >= from) &&
+          (!Number.isFinite(to) || year <= to)
+        );
       })
     );
   }
@@ -104,6 +113,7 @@
   function sortRows(rows, key, direction = 'asc') {
     const sortValue = row => {
       if (key === 'birth') return row.birthSort;
+      if (key === 'marriage') return row.marriageSort;
       if (key === 'death') return row.deathSort;
       if (key === 'id') return row.idSort;
       return row[key];

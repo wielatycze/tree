@@ -1,7 +1,7 @@
 'use strict';
 
 const PAGE_SIZE = 200;
-const DATA_FILES = ['si', 'births', 'deaths', 'places', 'nums'];
+const DATA_FILES = ['si', 'births', 'marriages', 'deaths', 'places', 'nums'];
 
 let allRows = [];
 let visibleRows = [];
@@ -34,11 +34,13 @@ function updateDateRange(key, changedInput = null) {
 }
 
 function setupDateRanges() {
-  ['birth', 'death'].forEach(key => {
-    const years = allRows
-      .map(row => row[`${key}Sort`])
-      .filter(value => value != null)
-      .map(value => Math.floor(value / 10000));
+  ['birth', 'marriage', 'death'].forEach(key => {
+    const years = key === 'marriage'
+      ? allRows.flatMap(row => row.marriageYears)
+      : allRows
+        .map(row => row[`${key}Sort`])
+        .filter(value => value != null)
+        .map(value => Math.floor(value / 10000));
     const min = Math.min(...years);
     const max = Math.max(...years);
     const { from, to } = dateRangeInputs(key);
@@ -77,6 +79,7 @@ function appendNextPage() {
     row.appendChild(createCell(person.given));
     row.appendChild(createCell(person.patronymic));
     row.appendChild(createCell(person.birth, 'date-cell'));
+    row.appendChild(createCell(person.marriage, 'date-cell'));
     row.appendChild(createCell(person.death, 'date-cell'));
     row.appendChild(createCell(person.place));
 
@@ -129,7 +132,7 @@ function applyView() {
     const row = document.createElement('tr');
     row.className = 'empty-row';
     const cell = document.createElement('td');
-    cell.colSpan = 7;
+    cell.colSpan = 8;
     cell.textContent = 'Нічога не знойдзена';
     row.appendChild(cell);
     tableBody.appendChild(row);
@@ -144,10 +147,10 @@ async function loadPeople() {
     const responses = await Promise.all(DATA_FILES.map(name => fetch(`data/${name}.json`)));
     const failedResponse = responses.find(response => !response.ok);
     if (failedResponse) throw new Error(`HTTP ${failedResponse.status}`);
-    const [searchIndex, births, deaths, places, numbers] = await Promise.all(
+    const [searchIndex, births, marriages, deaths, places, numbers] = await Promise.all(
       responses.map(response => response.json())
     );
-    allRows = PeopleList.createRows(searchIndex, births, deaths, places, numbers);
+    allRows = PeopleList.createRows(searchIndex, births, deaths, places, numbers, marriages);
     setupDateRanges();
     updateSortIndicators();
     applyView();
@@ -182,7 +185,7 @@ clearFilters.addEventListener('click', () => {
   filterInputs.forEach(input => {
     input.value = input.type === 'range' ? input.dataset.defaultValue : '';
   });
-  ['birth', 'death'].forEach(key => updateDateRange(key));
+  ['birth', 'marriage', 'death'].forEach(key => updateDateRange(key));
   applyView();
 });
 

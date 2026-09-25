@@ -81,19 +81,20 @@ body {
 
 #people-table {
   width: 100%;
-  min-width: 1050px;
+  min-width: 1200px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
   background: #fff;
 }
 
-.col-surname { width: 22%; }
-.col-given { width: 13%; }
-.col-patronymic { width: 16%; }
-.col-date { width: 11%; }
-.col-place { width: 19%; }
-.col-id { width: 8%; }
+.col-surname { width: 20%; }
+.col-given { width: 12%; }
+.col-patronymic { width: 15%; }
+.col-date { width: 10%; }
+.col-marriage { width: 13%; }
+.col-place { width: 13%; }
+.col-id { width: 7%; }
 
 th,
 td {
