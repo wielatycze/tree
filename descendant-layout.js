@@ -179,10 +179,12 @@
       };
     }
 
-    function makeChildFamilyBlocks(orderedFams, remainingGenerations) {
+    function makeChildFamilyBlocks(orderedFams, remainingGenerations, visiting = new Set()) {
       return orderChildFamilyBlocks(orderedFams.map((fam, fi) => {
         const children = Array.isArray(fam.children) ? fam.children : [];
-        const childLayouts = children.map(child => computeLayout(child.id, remainingGenerations - 1));
+        const childLayouts = children.map(child =>
+          computeLayout(child.id, remainingGenerations - 1, visiting)
+        );
         const packedChildren = packChildLayouts(childLayouts);
         const childrenWidth = packedChildren.width;
         const blockWidth = Math.max(childrenWidth, nodeWidth);
@@ -253,9 +255,13 @@
       return blockLefts.map(left => left + centerShift);
     }
 
-    function computeLayout(personId, remainingGenerations = Infinity) {
+    function computeLayout(personId, remainingGenerations = Infinity, visiting = new Set()) {
       const cacheKey = `${personId}:${remainingGenerations === Infinity ? 'all' : remainingGenerations}`;
       if (layoutCache.has(cacheKey)) return layoutCache.get(cacheKey);
+      const personKey = String(personId);
+      if (visiting.has(personKey)) return leafLayout();
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(personKey);
 
       const families = orderFamilies(getFamilies(personId));
       if (!families.length || remainingGenerations <= 0) {
@@ -265,7 +271,7 @@
       }
 
       const { orderedFams, spouseOffsets, anchorOffsets } = splitFamilies(families);
-      const familyBlocks = makeChildFamilyBlocks(orderedFams, remainingGenerations);
+      const familyBlocks = makeChildFamilyBlocks(orderedFams, remainingGenerations, nextVisiting);
       if (!familyBlocks.length) {
         const layout = leafLayout();
         layoutCache.set(cacheKey, layout);
@@ -329,20 +335,30 @@
     }
 
     function computeDepth(personId, maxDepth = Infinity) {
-      let depth = 0;
-      let queue = [personId];
-      while (queue.length && depth < maxDepth) {
-        const next = [];
-        for (const id of queue) {
-          getFamilies(id).forEach(fam => {
-            fam.children.forEach(child => next.push(child.id));
-          });
-        }
-        if (!next.length) break;
-        depth += 1;
-        queue = next;
+      const memo = new Map();
+
+      function depthFrom(id, remaining, visiting) {
+        if (remaining <= 0) return 0;
+        const personKey = String(id);
+        if (visiting.has(personKey)) return 0;
+        const memoKey = `${personKey}:${remaining === Infinity ? 'all' : remaining}`;
+        if (memo.has(memoKey)) return memo.get(memoKey);
+
+        const nextVisiting = new Set(visiting);
+        nextVisiting.add(personKey);
+        const childIds = getFamilies(id).flatMap(fam =>
+          (Array.isArray(fam.children) ? fam.children : []).map(child => child.id)
+        );
+        const depth = childIds.length
+          ? 1 + Math.max(...childIds.map(childId =>
+            depthFrom(childId, remaining - 1, nextVisiting)
+          ))
+          : 0;
+        memo.set(memoKey, depth);
+        return depth;
       }
-      return depth;
+
+      return depthFrom(personId, maxDepth, new Set());
     }
 
     function assignConnectorLanes(blocks) {
@@ -417,10 +433,15 @@
       });
     }
 
-    function positionChildFamilyBlocks(parentCx, families, remainingGenerations, margin) {
+    function positionChildFamilyBlocks(parentCx, families, remainingGenerations, margin, parentId = null) {
       const orderedFamilies = orderFamilies((families || []).filter(Boolean));
       const familySplit = splitFamilies(orderedFamilies);
-      const famBlocks = makeChildFamilyBlocks(familySplit.orderedFams, remainingGenerations);
+      const visiting = parentId == null ? new Set() : new Set([String(parentId)]);
+      const famBlocks = makeChildFamilyBlocks(
+        familySplit.orderedFams,
+        remainingGenerations,
+        visiting
+      );
       const belowWidth = famBlocks.length
         ? famBlocks.reduce((sum, block) => sum + block.blockWidth, 0) + (famBlocks.length - 1) * familyGap
         : 0;

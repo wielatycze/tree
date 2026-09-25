@@ -12,9 +12,11 @@ describe('UI layout', function() {
   it('uses the Belarusian site name in the tab and toolbar', function() {
     const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
 
+    assert.match(html, /<html lang="be">/);
     assert.match(html, /<title>Вяляцічы і воласць<\/title>/);
     assert.match(html, /<h1>Вяляцічы і воласць<\/h1>/);
     assert.match(html, /id="search-input" placeholder="Пошук"/);
+    assert.match(html, /http-equiv="Content-Security-Policy"/);
     assert.doesNotMatch(html, /Велятичи/);
     assert.doesNotMatch(html, /id="btn-home"|>Галоўная<\/button>/);
   });
@@ -77,6 +79,7 @@ describe('UI layout', function() {
     assert.match(treeHtml, /class="btn helper-page-link"[^>]*href="people\.html"[^>]*aria-label="Спіс асоб"/);
     assert.match(treeHtml, /<div id="toolbar">\s*<a class="btn helper-page-link"[\s\S]*?<\/a>\s*<h1>Вяляцічы і воласць<\/h1>/);
     assert.match(peopleHtml, /<table id="people-table">/);
+    assert.match(peopleHtml, /http-equiv="Content-Security-Policy"/);
     assert.match(peopleHtml, /data-sort="birth"[\s\S]*data-sort="marriage"[\s\S]*data-sort="death"/);
     ['surname', 'given', 'patronymic', 'place', 'id'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`data-filter="${field}"`));

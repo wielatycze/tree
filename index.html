@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="be">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Вяляцічы і воласць</title>
   <link rel="stylesheet" href="tree.css">
 </head>
@@ -24,12 +26,12 @@
     </a>
     <h1>Вяляцічы і воласць</h1>
     <div id="search-wrap">
-      <input id="search-input" placeholder="Пошук" autocomplete="off">
+      <input id="search-input" placeholder="Пошук" aria-label="Пошук" autocomplete="off">
       <div id="search-results" style="display:none"></div>
     </div>
-    <div class="mode-toggle">
-      <button class="mode-btn" data-mode="ancestors">Продкі</button>
-      <button class="mode-btn mode-btn-active" data-mode="descendants">Продкі і нашчадкі</button>
+    <div class="mode-toggle" role="group" aria-label="Рэжым дрэва">
+      <button class="mode-btn" data-mode="ancestors" aria-pressed="false">Продкі</button>
+      <button class="mode-btn mode-btn-active" data-mode="descendants" aria-pressed="true">Продкі і нашчадкі</button>
     </div>
     <div id="comparison-pick-status" style="display:none" aria-live="polite">
       <span id="comparison-pick-name"></span>
@@ -57,7 +59,7 @@
       <div id="detail-info"></div>
       <div id="detail-nav"></div>
     </div>
-    <span id="detail-close">×</span>
+    <button id="detail-close" type="button" aria-label="Закрыць">×</button>
   </div>
 
   <div id="person-context-menu" role="menu" style="display:none">

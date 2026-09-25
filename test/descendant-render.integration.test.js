@@ -221,7 +221,8 @@ async function renderTreeFixture(
   mode = 'descendants',
   descendantLimit = null,
   measuredNodeHeights = {},
-  comparisonIdentifiers = null
+  comparisonIdentifiers = null,
+  loadTracker = null
 ) {
   const elements = new Map();
   const replacedUrls = [];
@@ -309,10 +310,18 @@ async function renderTreeFixture(
       },
       addEventListener() {},
     },
-    fetch: async url => ({
-      ok: true,
-      json: async () => JSON.parse(fs.readFileSync(path.join(process.cwd(), url), 'utf8')),
-    }),
+    fetch: async url => {
+      if (loadTracker) {
+        loadTracker.active += 1;
+        loadTracker.maxActive = Math.max(loadTracker.maxActive, loadTracker.active);
+        await new Promise(resolve => setTimeout(resolve, 2));
+        loadTracker.active -= 1;
+      }
+      return {
+        ok: true,
+        json: async () => JSON.parse(fs.readFileSync(path.join(process.cwd(), url), 'utf8')),
+      };
+    },
   };
   context.globalThis = context;
 
@@ -347,6 +356,7 @@ async function renderTreeFixture(
     setMode: context.setMode,
     showDetailPanel: context.showDetailPanel,
     buildPerson: context.buildPerson,
+    resolvePersonId: context.resolvePersonId,
     loadingMessage: elementById('loading-msg').textContent,
     treeDocuments: elementById('tree-documents'),
     treeCount: elementById('tree-count'),
@@ -354,6 +364,8 @@ async function renderTreeFixture(
     searchInput: elementById('search-input'),
     searchResults: elementById('search-results'),
     findPersonMatches: context.findPersonMatches,
+    createNode: context.createNode,
+    appendPersonSearchResult: context.appendPersonSearchResult,
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
     contextCompare: elementById('context-compare'),
@@ -769,10 +781,9 @@ describe('Descendant mode real render', function() {
       fixture.treeDocuments.href,
       'https://wielatycze.github.io/agg/?id=494'
     );
-    assert.match(
-      rootCard.innerHTML,
-      /<a class="node-num" href="https:\/\/wielatycze\.github\.io\/agg\/\?id=494"[^>]*>#494<\/a>/
-    );
+    const cardDocumentsLink = rootCard.children.find(child => child.className === 'node-num');
+    assert.strictEqual(cardDocumentsLink.href, 'https://wielatycze.github.io/agg/?id=494');
+    assert.strictEqual(cardDocumentsLink.textContent, '#494');
 
     fixture.showDetailPanel(fixture.buildPerson(1467), null);
     const documentsLink = fixture.detailNav.children.at(-1);
@@ -788,7 +799,7 @@ describe('Descendant mode real render', function() {
 
     assert.strictEqual(fixture.treeDocuments.style.display, 'none');
     assert.strictEqual(fixture.treeDocuments.href, undefined);
-    assert.doesNotMatch(rootCard.innerHTML, /class="node-num"/);
+    assert.ok(!rootCard.children.some(child => child.className === 'node-num'));
 
     fixture.showDetailPanel(fixture.buildPerson(1), null);
     assert.strictEqual(fixture.detailNav.children.length, 0);
@@ -798,6 +809,44 @@ describe('Descendant mode real render', function() {
     const { loadingMessage } = await renderTreeFixture(11083);
 
     assert.strictEqual(loadingMessage, 'Загрузка дадзеных радавода...');
+  });
+
+  it('loads independent data files concurrently', async function() {
+    const tracker = { active: 0, maxActive: 0 };
+
+    await renderTreeFixture(1, 'descendants', null, {}, null, tracker);
+
+    assert.ok(tracker.maxActive > 1, 'expected more than one in-flight data request');
+  });
+
+  it('indexes stable person and public-id lookups after loading', async function() {
+    const fixture = await renderTreeFixture(1467);
+
+    assert.strictEqual(fixture.buildPerson(1467), fixture.buildPerson('1467'));
+    assert.strictEqual(fixture.resolvePersonId('494'), 1467);
+  });
+
+  it('renders genealogical text as text rather than executable markup', async function() {
+    const fixture = await renderTreeFixture(1);
+    const hostileName = '<img src=x onerror="globalThis.injected=true">';
+    const person = {
+      id: 999999,
+      sex: 0,
+      given: hostileName,
+      patronymic: '',
+      surname: '',
+      maiden: '',
+      birth: null,
+      death: null,
+      place: '<script>globalThis.injected=true</script>',
+      num: null,
+    };
+
+    const card = fixture.createNode(person, 0, 0);
+
+    assert.strictEqual(card.innerHTML, '');
+    assert.strictEqual(card.children[0].textContent, hostileName);
+    assert.strictEqual(card.children[1].textContent, person.place);
   });
 
   it('uses descendants mode when the URL does not specify a mode', async function() {

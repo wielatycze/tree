@@ -41,6 +41,11 @@ let PL; // places:       {person_id: "place name"}
 let NU; // nums:         {person_id: integer}
 let BI; // births:       {person_id: [y, m, d]}
 let DE; // deaths:       {person_id: [y, m, d]}
+let PERSON_ROWS;
+let PERSON_CACHE;
+let DB_ID_BY_NUM;
+let KNOWN_PERSON_IDS;
+let SEARCH_ENTRIES;
 
 let currentRootId = null;
 let currentMode = 'descendants';
@@ -49,6 +54,7 @@ let currentComparison = null;
 let contextComparisonPerson = null;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
+const SEARCH_COLLATOR = new Intl.Collator(['be', 'ru'], { sensitivity: 'base' });
 
 function modeFromUrl() {
   const mode = new URLSearchParams(location.search || '').get('mode');
@@ -57,7 +63,9 @@ function modeFromUrl() {
 
 function syncModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(button => {
-    button.classList.toggle('mode-btn-active', button.dataset.mode === currentMode);
+    const active = button.dataset.mode === currentMode;
+    button.classList.toggle('mode-btn-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
 }
 
@@ -103,7 +111,7 @@ function comparisonFromUrl() {
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
-  await loadData();
+  if (!await loadData()) return;
   currentMode = modeFromUrl();
   const comparisonIds = comparisonFromUrl();
   if (comparisonIds) renderCommonAncestorTree(comparisonIds[0], comparisonIds[1]);
@@ -122,25 +130,44 @@ async function loadData() {
   msg.textContent = 'Загрузка дадзеных радавода...';
 
   try {
-    const results = {};
-    for (let i = 0; i < CONFIG.dataFiles.length; i++) {
-      const name = CONFIG.dataFiles[i];
+    let loadedCount = 0;
+    const entries = await Promise.all(CONFIG.dataFiles.map(async name => {
       const resp = await fetch(CONFIG.dataDir + name + '.json');
       if (!resp.ok) throw new Error(`Failed to fetch ${name}.json (HTTP ${resp.status})`);
-      results[name] = await resp.json();
-      fill.style.width = Math.round((i + 1) / CONFIG.dataFiles.length * 100) + '%';
-    }
+      const data = await resp.json();
+      loadedCount += 1;
+      fill.style.width = Math.round(loadedCount / CONFIG.dataFiles.length * 100) + '%';
+      return [name, data];
+    }));
+    const results = Object.fromEntries(entries);
     ({ si: SI, parents: PA, children: CH, marriages: MA,
        places: PL, nums: NU, births: BI, deaths: DE } = results);
+    buildDataIndexes();
     document.getElementById('loading').style.display = 'none';
+    return true;
 
   } catch (err) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('err-msg').textContent =
       err.message + '\n\nПераканайцеся, што файлы JSON знаходзяцца ў папцы data/. Запусціце export.py для іх стварэння.';
     document.getElementById('err').style.display = 'flex';
-    throw err; // stop execution
+    return false;
   }
+}
+
+function buildDataIndexes() {
+  PERSON_ROWS = new Map(SI.map(row => [Number(row[0]), row]));
+  PERSON_CACHE = new Map();
+  DB_ID_BY_NUM = new Map(Object.entries(NU).map(([dbId, customId]) => [
+    Number(customId),
+    Number(dbId),
+  ]));
+  KNOWN_PERSON_IDS = new Set([
+    ...PERSON_ROWS.keys(),
+    ...Object.keys(BI).map(Number),
+    ...Object.keys(DE).map(Number),
+  ]);
+  SEARCH_ENTRIES = null;
 }
 
 // ── ID Mapping (database ID ↔ custom ID) ──────────────────────
@@ -152,11 +179,7 @@ function resolvePersonId(identifier) {
   // Check if it's a database ID (prefixed with ~)
   if (identifier.startsWith('~')) {
     const dbId = parseInt(identifier.slice(1), 10);
-    if (!isNaN(dbId) && dbId > 0) {
-      if (SI.some(x => x[0] === dbId) || BI[dbId] || DE[dbId]) {
-        return dbId;
-      }
-    }
+    if (!isNaN(dbId) && dbId > 0 && KNOWN_PERSON_IDS.has(dbId)) return dbId;
     return CONFIG.homeId;
   }
   
@@ -164,17 +187,11 @@ function resolvePersonId(identifier) {
   const id = parseInt(identifier, 10);
   if (isNaN(id) || id <= 0) return CONFIG.homeId;
   
-  // Try to find by custom ID (num field) first
-  for (const [dbId, customId] of Object.entries(NU)) {
-    if (customId === id) {
-      return parseInt(dbId, 10);
-    }
-  }
+  const dbId = DB_ID_BY_NUM.get(id);
+  if (dbId != null) return dbId;
 
   // Fall back to database ID if custom ID not found
-  if (SI.some(x => x[0] === id) || BI[id] || DE[id]) {
-    return id;
-  }
+  if (KNOWN_PERSON_IDS.has(id)) return id;
 
   // Not found - use default
   return CONFIG.homeId;
@@ -221,23 +238,26 @@ function formatName(given, patronymic, surname, maiden) {
 }
 
 /** Build a person object from the data store */
-/** Build a person object from the data store */
 function buildPerson(id) {
-  if (!id) return null;
-  const r = SI.find(x => x[0] == id);
-  if (!r && !BI[id] && !DE[id]) return null;
-  return {
-    id,
+  const personId = Number(id);
+  if (!Number.isInteger(personId) || personId <= 0) return null;
+  if (PERSON_CACHE.has(personId)) return PERSON_CACHE.get(personId);
+  const r = PERSON_ROWS.get(personId);
+  if (!r && !BI[personId] && !DE[personId]) return null;
+  const person = {
+    id: personId,
     sex:        r ? r[1] : 0,
     given:      r ? r[2] : null,
     patronymic: r ? r[3] : null,
     surname:    r ? r[4] : null,
     maiden:     r ? r[5] : null,
-    birth:      BI[id] || null,
-    death:      DE[id] || null,
-    place:      PL[id] || null,
-    num:        NU[id] ?? null,
+    birth:      BI[personId] || null,
+    death:      DE[personId] || null,
+    place:      PL[personId] || null,
+    num:        NU[personId] ?? null,
   };
+  PERSON_CACHE.set(personId, person);
+  return person;
 }
 
 /**
@@ -380,55 +400,20 @@ function buildTree(rootId) {
   const root = buildPerson(rootId);
   if (!root) return null;
 
-  const [fatherId, motherId] = PA[rootId] || [null, null];
+  const [fatherId, motherId] = PA[root.id] || [null, null];
   const ancestorTree = {
     person: root,
-    father: buildAncestorNode(fatherId, new Set([String(rootId)])),
-    mother: buildAncestorNode(motherId, new Set([String(rootId)])),
+    father: buildAncestorNode(fatherId, new Set([String(root.id)])),
+    mother: buildAncestorNode(motherId, new Set([String(root.id)])),
   };
 
-  const families = (MA[rootId] || []).map(([spouseId, marriageDate, childIds]) => {
-    // childIds from MA is the per-couple list; fall back to all children if empty
-    const children = (childIds && childIds.length)
-      ? childIds.map(buildPerson).filter(Boolean)
-      : [];
-    return {
-      spouse:   buildPerson(spouseId),
-      date:     marriageDate,
-      children,
-    };
-  });
-
-  // Fallback: no marriage records at all — use CH map
-  if (!families.length) {
-    const ch = (CH[rootId] || []).map(buildPerson).filter(Boolean);
-    if (ch.length) families.push({ spouse: null, date: null, children: ch });
-  }
-
-  // Any children not accounted for in MA get their own anonymous family
-  const allKnownChildren = new Set(families.flatMap(f => f.children.map(c => c.id)));
-  const chChildren = (CH[rootId] || []).map(buildPerson).filter(Boolean);
-  const unknownChildren = chChildren.filter(c => !allKnownChildren.has(c.id));
-  if (unknownChildren.length) {
-    families.push({ spouse: null, date: null, children: unknownChildren });
-  }
-
-  // Remove families that have neither spouse nor children (nothing to show)
-  const validFamilies = families.filter(f => f.spouse || f.children.length);
-
-  validFamilies.forEach(fam => {
-    fam.children.sort((a, b) =>
-      ((a.birth && a.birth[0]) || 9999) - ((b.birth && b.birth[0]) || 9999)
-    );
-  });
-
-  return { ancestorTree, families: validFamilies };
+  return { ancestorTree, families: buildFamilyGroups(root.id) };
 }
 
 function birthYear(person) {
   if (!person) return 9999;
   if (person.birth && person.birth[0]) return person.birth[0];
-  const r = SI.find(x => x[0] == person.id);
+  const r = PERSON_ROWS.get(Number(person.id));
   return (r && r[6]) || 9999;
 }
 
@@ -630,6 +615,13 @@ function drawBar(svg, cx1, cx2, y, stroke) {
 
 // ── Node DOM helpers ─────────────────────────────────────────
 
+function createTextElement(tag, className, text) {
+  const element = document.createElement(tag);
+  element.className = className;
+  element.textContent = text;
+  return element;
+}
+
 function createNode(person, x, y, isRoot = false) {
   if (!person) return null;
   const name = formatName(person.given, person.patronymic, person.surname, person.maiden)
@@ -642,14 +634,16 @@ function createNode(person, x, y, isRoot = false) {
     isRoot ? 'is-root' : ''].filter(Boolean).join(' ');
   div.style.cssText = `left:${x}px;top:${y}px`;
   div.dataset.id = person.id;
-  div.innerHTML = [
-    `<div class="node-name">${name}</div>`,
-    dates        ? `<div class="node-dates">${dates}</div>` : '',
-    person.place ? `<div class="node-place">${person.place}</div>` : '',
-    person.num != null
-      ? `<a class="node-num" href="${getDocumentsUrl(person)}" aria-label="Дакументы: #${person.num}" title="Дакументы">#${person.num}</a>`
-      : '',
-  ].join('');
+  div.appendChild(createTextElement('div', 'node-name', name));
+  if (dates) div.appendChild(createTextElement('div', 'node-dates', dates));
+  if (person.place) div.appendChild(createTextElement('div', 'node-place', person.place));
+  if (person.num != null) {
+    const documentsLink = createTextElement('a', 'node-num', `#${person.num}`);
+    documentsLink.href = getDocumentsUrl(person);
+    documentsLink.title = 'Дакументы';
+    documentsLink.setAttribute('aria-label', `Дакументы: #${person.num}`);
+    div.appendChild(documentsLink);
+  }
   div.addEventListener('click', event => {
     if (event.target.closest && event.target.closest('.node-num')) return;
     showDetailPanel(person, div);
@@ -840,8 +834,23 @@ function renderTree(tree) {
 function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, maxGenerations) {
   if (maxGenerations <= 0) return;
   const rootFamilies = orderedFams.filter(Boolean);
+  const expandedPeople = new Set([String(ancestorTree.person.id)]);
   let depth = 1;
-  let queue = renderDescendantParent(svg, ancestorTree.person, rootCx, Y_ROOT, rootFamilies, true, MARGIN, maxGenerations);
+  let queue = renderDescendantParent(
+    svg,
+    ancestorTree.person,
+    rootCx,
+    Y_ROOT,
+    rootFamilies,
+    true,
+    MARGIN,
+    maxGenerations
+  ).filter(({ person }) => {
+    const key = String(person.id);
+    if (expandedPeople.has(key)) return false;
+    expandedPeople.add(key);
+    return true;
+  });
 
   while (queue.length && depth < maxGenerations) {
     depth += 1;
@@ -850,7 +859,21 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
       const families = buildFamilyGroups(person.id).filter(Boolean);
       if (!families.length) continue;
       const remainingGenerations = maxGenerations - depth + 1;
-      nextQueue.push(...renderDescendantParent(svg, person, cx, y, families, true, MARGIN, remainingGenerations));
+      renderDescendantParent(
+        svg,
+        person,
+        cx,
+        y,
+        families,
+        true,
+        MARGIN,
+        remainingGenerations
+      ).forEach(position => {
+        const key = String(position.person.id);
+        if (expandedPeople.has(key)) return;
+        expandedPeople.add(key);
+        nextQueue.push(position);
+      });
     }
     queue = nextQueue;
   }
@@ -861,7 +884,13 @@ function renderDescendantParent(svg, parent, parentCx, parentY, families, render
 
   const Y_CH = parentY + ROW_H;
   const baseDropY = parentY + ROW_H - 16;
-  const familyLayout = descendantLayout.positionChildFamilyBlocks(parentCx, families, remainingGenerations, MARGIN);
+  const familyLayout = descendantLayout.positionChildFamilyBlocks(
+    parentCx,
+    families,
+    remainingGenerations,
+    MARGIN,
+    parent.id
+  );
   const { positionedBlocks } = familyLayout;
 
   if (renderSpouses) {
@@ -1182,6 +1211,7 @@ function renderCommonAncestorTree(firstId, secondId) {
   document.getElementById('descendant-limit-control').style.display = 'none';
   document.querySelectorAll('.mode-btn').forEach(button => {
     button.classList.remove('mode-btn-active');
+    button.setAttribute('aria-pressed', 'false');
   });
 
   const firstName = formatName(firstPerson.given, firstPerson.patronymic,
@@ -1445,47 +1475,66 @@ function initUI() {
 
 // ── Search ───────────────────────────────────────────────────
 
-function findPersonMatches(rawQuery) {
-  const normalize = value => String(value || '')
+function normalizeSearchText(value) {
+  return String(value || '')
     .toLowerCase()
     .replace(/[()[\]{},/]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const query = normalize(rawQuery);
+}
+
+function isOrderedPrefixMatch(queryWords, orderedFields) {
+  let fieldIndex = 0;
+  return queryWords.every(word => {
+    while (fieldIndex < orderedFields.length && !orderedFields[fieldIndex].startsWith(word)) {
+      fieldIndex += 1;
+    }
+    if (fieldIndex >= orderedFields.length) return false;
+    fieldIndex += 1;
+    return true;
+  });
+}
+
+function createSearchEntry(r) {
+  const [, , given, patronymic, surname, maiden, birthYear] = r;
+  const fields = [given, patronymic, surname, maiden]
+    .filter(Boolean)
+    .map(normalizeSearchText);
+  const orderedVariants = [
+    [surname, given, patronymic].filter(Boolean).map(normalizeSearchText),
+  ];
+  if (maiden && maiden !== surname) {
+    orderedVariants.push([maiden, given, patronymic].filter(Boolean).map(normalizeSearchText));
+  }
+  const name = normalizeSearchText(formatName(given, patronymic, surname, maiden));
+  return {
+    r,
+    fields,
+    orderedVariants,
+    name,
+    nameVariants: [name, ...orderedVariants.map(variant => variant.join(' '))],
+    birthYear: birthYear || Number.MAX_SAFE_INTEGER,
+  };
+}
+
+function searchEntries() {
+  if (!SEARCH_ENTRIES) SEARCH_ENTRIES = SI.map(createSearchEntry);
+  return SEARCH_ENTRIES;
+}
+
+function findPersonMatches(rawQuery) {
+  const query = normalizeSearchText(rawQuery);
   const words = query.split(' ').filter(Boolean);
   if (!words.length) return [];
 
-  const isOrderedPrefixMatch = (queryWords, orderedFields) => {
-    let fieldIndex = 0;
-    return queryWords.every(word => {
-      while (fieldIndex < orderedFields.length && !orderedFields[fieldIndex].startsWith(word)) {
-        fieldIndex += 1;
-      }
-      if (fieldIndex >= orderedFields.length) return false;
-      fieldIndex += 1;
-      return true;
-    });
-  };
-
   const matches = [];
-  for (const r of SI) {
-    const [, , given, patronymic, surname, maiden, birthYear] = r;
-    const fields = [given, patronymic, surname, maiden]
-      .filter(Boolean)
-      .map(normalize);
+  for (const entry of searchEntries()) {
+    const { r, fields, orderedVariants, name, nameVariants, birthYear } = entry;
     const allMatch = words.every(word =>
       fields.some(field => field.startsWith(word) || field.includes(word))
     );
     if (!allMatch) continue;
 
-    const orderedVariants = [
-      [surname, given, patronymic].filter(Boolean).map(normalize),
-    ];
-    if (maiden && maiden !== surname) {
-      orderedVariants.push([maiden, given, patronymic].filter(Boolean).map(normalize));
-    }
-    const displayName = normalize(formatName(given, patronymic, surname, maiden));
-    const nameVariants = [displayName, ...orderedVariants.map(variant => variant.join(' '))];
     const allPrefix = words.every(word => fields.some(field => field.startsWith(word)));
     let relevance = 5;
     if (nameVariants.some(name => name === query)) relevance = 0;
@@ -1497,14 +1546,14 @@ function findPersonMatches(rawQuery) {
     matches.push({
       r,
       relevance,
-      name: displayName,
-      birthYear: birthYear || Number.MAX_SAFE_INTEGER,
+      name,
+      birthYear,
     });
   }
 
   matches.sort((a, b) => {
     if (a.relevance !== b.relevance) return a.relevance - b.relevance;
-    const alphabetical = a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+    const alphabetical = SEARCH_COLLATOR.compare(a.name, b.name);
     if (alphabetical) return alphabetical;
     return a.birthYear - b.birthYear || a.r[0] - b.r[0];
   });
@@ -1520,10 +1569,8 @@ function appendPersonSearchResult(container, row, onSelect) {
     .join(' · ');
   const result = document.createElement('div');
   result.className = 'search-result';
-  result.innerHTML = `
-    <div class="search-result-name">${name}</div>
-    <div class="search-result-sub">${details}</div>
-  `.trim();
+  result.appendChild(createTextElement('div', 'search-result-name', name));
+  result.appendChild(createTextElement('div', 'search-result-sub', details));
   result.addEventListener('click', () => onSelect(id));
   container.appendChild(result);
 }

@@ -41,6 +41,10 @@ function setupDateRanges() {
         .map(row => row[`${key}Sort`])
         .filter(value => value != null)
         .map(value => Math.floor(value / 10000));
+    if (!years.length) {
+      dateRangeInputs(key).output.textContent = '—';
+      return;
+    }
     const min = Math.min(...years);
     const max = Math.max(...years);
     const { from, to } = dateRangeInputs(key);

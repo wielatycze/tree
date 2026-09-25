@@ -91,6 +91,19 @@ describe('DescendantLayout', function() {
     });
   });
 
+  it('treats cyclic descendant relationships as terminal branches', function() {
+    const layout = makeLayout({
+      1: [{ spouse: null, children: [{ id: 2 }] }],
+      2: [{ spouse: null, children: [{ id: 1 }] }],
+    });
+
+    const result = layout.computeLayout(1);
+
+    assert.strictEqual(layout.computeDepth(1), 2);
+    assert.ok(Number.isFinite(result.width));
+    assert.strictEqual(result.contours.length, 3);
+  });
+
   it('does not add parent-row spouse width to a child-family block', function() {
     const layout = makeLayout();
     const blocks = layout.makeChildFamilyBlocks([

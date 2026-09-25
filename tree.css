@@ -447,6 +447,8 @@ svg.connectors {
 
 #detail-close {
   margin-left: auto;
+  border: 0;
+  background: transparent;
   font-size: 22px;
   cursor: pointer;
   color: #aaa;
@@ -454,7 +456,11 @@ svg.connectors {
   padding: 0 4px;
   align-self: flex-start;
 }
-#detail-close:hover { color: #333; }
+#detail-close:hover,
+#detail-close:focus-visible {
+  color: #333;
+  outline: none;
+}
 
 .nav-btn {
   padding: 5px 12px;
