@@ -216,7 +216,13 @@ function ancestorsOf(rootId, parentsByChild) {
   return seen;
 }
 
-async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit = null, measuredNodeHeights = {}) {
+async function renderTreeFixture(
+  rootId,
+  mode = 'descendants',
+  descendantLimit = null,
+  measuredNodeHeights = {},
+  comparisonIdentifiers = null
+) {
   const elements = new Map();
   const replacedUrls = [];
   const elementById = id => {
@@ -247,16 +253,12 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'tree-count',
     'person-context-menu',
     'context-show-tree',
-    'btn-common-ancestors',
-    'common-ancestor-overlay',
-    'common-ancestor-dialog',
-    'common-ancestor-close',
-    'common-person-1',
-    'common-person-2',
-    'common-results-1',
-    'common-results-2',
-    'common-ancestor-status',
-    'common-ancestor-build',
+    'context-compare',
+    'context-compare-label',
+    'context-compare-from',
+    'comparison-pick-status',
+    'comparison-pick-name',
+    'comparison-pick-clear',
   ].forEach(elementById);
 
   const modeButtons = [
@@ -267,8 +269,10 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
   modeButtons[1].dataset.mode = 'descendants';
   const mockLocation = {
     pathname: '/index.html',
-    search: mode == null ? '' : `?mode=${mode}`,
-    hash: `#~${rootId}`,
+    search: comparisonIdentifiers
+      ? `?compare=${comparisonIdentifiers.join(',')}`
+      : mode == null ? '' : `?mode=${mode}`,
+    hash: comparisonIdentifiers ? '' : `#~${rootId}`,
   };
 
   const context = {
@@ -351,14 +355,17 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     searchResults: elementById('search-results'),
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
-    commonAncestorOverlay: elementById('common-ancestor-overlay'),
-    commonAncestorOpen: elementById('btn-common-ancestors'),
-    commonAncestorBuild: elementById('common-ancestor-build'),
-    commonPersonInputs: [elementById('common-person-1'), elementById('common-person-2')],
-    commonPersonResults: [elementById('common-results-1'), elementById('common-results-2')],
+    contextCompare: elementById('context-compare'),
+    contextCompareLabel: elementById('context-compare-label'),
+    contextCompareFrom: elementById('context-compare-from'),
+    comparisonPickStatus: elementById('comparison-pick-status'),
+    comparisonPickName: elementById('comparison-pick-name'),
+    comparisonPickClear: elementById('comparison-pick-clear'),
     renderCommonAncestorTree: context.renderCommonAncestorTree,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
+    crumb: elementById('crumb'),
+    location: mockLocation,
   };
 }
 
@@ -367,28 +374,6 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
-  it('selects two people from the full search index and builds their comparison', async function() {
-    const fixture = await renderTreeFixture(11083);
-
-    fixture.commonAncestorOpen.dispatchEvent({ type: 'click' });
-    assert.strictEqual(fixture.commonAncestorOverlay.style.display, 'flex');
-
-    fixture.commonPersonInputs[0].value = 'луцея дементьева';
-    fixture.commonPersonInputs[0].dispatchEvent({ type: 'input' });
-    await new Promise(resolve => setTimeout(resolve, 230));
-    fixture.commonPersonResults[0].children[0].dispatchEvent({ type: 'click' });
-
-    fixture.commonPersonInputs[1].value = 'синклита дементьева';
-    fixture.commonPersonInputs[1].dispatchEvent({ type: 'input' });
-    await new Promise(resolve => setTimeout(resolve, 230));
-    fixture.commonPersonResults[1].children[0].dispatchEvent({ type: 'click' });
-
-    assert.strictEqual(fixture.commonAncestorBuild.disabled, false);
-    fixture.commonAncestorBuild.dispatchEvent({ type: 'click' });
-    assert.strictEqual(fixture.commonAncestorOverlay.style.display, 'none');
-    assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
-  });
-
   it('renders only the minimal paths to every nearest common ancestor', async function() {
     const fixture = await renderTreeFixture(1);
 
@@ -629,7 +614,9 @@ describe('Descendant mode real render', function() {
     });
 
     assert.strictEqual(prevented, true);
-    assert.strictEqual(fixture.personContextMenu.style.display, 'none');
+    assert.strictEqual(fixture.personContextMenu.style.display, 'block');
+    assert.strictEqual(fixture.contextShowTree.style.display, 'none');
+    assert.strictEqual(fixture.contextCompareLabel.textContent, 'Выбраць для параўнання');
     prevented = false;
 
     personNode.dispatchEvent({
@@ -641,6 +628,7 @@ describe('Descendant mode real render', function() {
 
     assert.strictEqual(prevented, true);
     assert.strictEqual(fixture.personContextMenu.style.display, 'block');
+    assert.strictEqual(fixture.contextShowTree.style.display, 'flex');
     assert.strictEqual(fixture.personContextMenu.dataset.personId, String(personNode.dataset.id));
 
     fixture.contextShowTree.dispatchEvent({ type: 'click' });
@@ -649,6 +637,85 @@ describe('Descendant mode real render', function() {
     );
     assert.strictEqual(newRoot.dataset.id, personNode.dataset.id);
     assert.strictEqual(fixture.personContextMenu.style.display, 'none');
+  });
+
+  it('selects comparison people by right-click across different displayed trees', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 1);
+    const firstRoot = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    firstRoot.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 120,
+      clientY: 140,
+      preventDefault() {},
+    });
+    fixture.contextCompare.dispatchEvent({ type: 'click' });
+
+    assert.strictEqual(fixture.comparisonPickStatus.style.display, 'flex');
+    assert.match(fixture.comparisonPickName.textContent, /^Агульныя продкі: /);
+    fixture.comparisonPickClear.dispatchEvent({ type: 'click' });
+    assert.strictEqual(fixture.comparisonPickStatus.style.display, 'none');
+    firstRoot.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 120,
+      clientY: 140,
+      preventDefault() {},
+    });
+    fixture.contextCompare.dispatchEvent({ type: 'click' });
+
+    const navigationTarget = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('node') && String(child.dataset.id) !== '11083'
+    );
+    navigationTarget.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 160,
+      clientY: 180,
+      preventDefault() {},
+    });
+    fixture.contextShowTree.dispatchEvent({ type: 'click' });
+
+    const secondRoot = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    assert.strictEqual(secondRoot.dataset.id, navigationTarget.dataset.id);
+    secondRoot.dispatchEvent({
+      type: 'contextmenu',
+      clientX: 180,
+      clientY: 200,
+      preventDefault() {},
+    });
+    assert.strictEqual(fixture.contextCompareLabel.textContent, 'Паказаць агульных продкаў');
+    fixture.contextCompare.dispatchEvent({ type: 'click' });
+
+    const firstPerson = fixture.buildPerson(11083);
+    const secondPerson = fixture.buildPerson(Number(secondRoot.dataset.id));
+    const urlId = person => person.num != null ? String(person.num) : `~${person.id}`;
+    assert.strictEqual(
+      fixture.location.search,
+      `?compare=${urlId(firstPerson)},${urlId(secondPerson)}`
+    );
+    assert.strictEqual(fixture.location.hash, '');
+    assert.match(fixture.crumb.textContent, /↔/);
+    assert.strictEqual(fixture.comparisonPickStatus.style.display, 'none');
+  });
+
+  it('restores a common-ancestor view from its two-person URL', async function() {
+    const fixture = await renderTreeFixture(
+      1,
+      'descendants',
+      null,
+      {},
+      ['~16591', '~17605']
+    );
+
+    const selectedNodes = fixture.nodes.filter(node =>
+      node.className.includes('is-comparison-first') || node.className.includes('is-comparison-second')
+    );
+    assert.strictEqual(selectedNodes.length, 2);
+    assert.match(fixture.crumb.textContent, /↔/);
+    assert.strictEqual(fixture.location.search, '?compare=~16591,~17605');
+    assert.strictEqual(fixture.location.hash, '');
   });
 
   it('loads every search match incrementally as the results are scrolled', async function() {

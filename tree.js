@@ -46,7 +46,7 @@ let currentRootId = null;
 let currentMode = 'descendants';
 let descendantGenerationLimit = null;
 let currentComparison = null;
-const commonAncestorSelection = [null, null];
+let contextComparisonPerson = null;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 
@@ -63,6 +63,7 @@ function syncModeButtons() {
 
 function syncTreeUrl(personId) {
   const params = new URLSearchParams(location.search || '');
+  params.delete('compare');
   if (currentMode === 'descendants') params.delete('mode');
   else params.set('mode', currentMode);
 
@@ -73,12 +74,43 @@ function syncTreeUrl(personId) {
   if (currentUrl !== nextUrl) history.replaceState(null, '', nextUrl);
 }
 
+function syncComparisonUrl(firstId, secondId) {
+  const params = new URLSearchParams(location.search || '');
+  params.delete('mode');
+  params.delete('compare');
+
+  const otherSearch = params.toString();
+  const comparisonSearch = `compare=${getUrlId(firstId)},${getUrlId(secondId)}`;
+  const search = [otherSearch, comparisonSearch].filter(Boolean).join('&');
+  const path = location.pathname || '';
+  const nextUrl = `${path}${search ? `?${search}` : ''}`;
+  const currentUrl = `${path}${location.search || ''}${location.hash || ''}`;
+  if (currentUrl !== nextUrl) history.replaceState(null, '', nextUrl);
+}
+
+function comparisonFromUrl() {
+  const value = new URLSearchParams(location.search || '').get('compare');
+  if (!value) return null;
+  const identifiers = value.split(',').map(identifier => identifier.trim());
+  if (identifiers.length !== 2 || identifiers.some(identifier => !identifier)) return null;
+  const ids = identifiers.map(resolvePersonId);
+  const canonical = ids.map(getUrlId);
+  if (ids[0] === ids[1] || canonical.some((identifier, index) => identifier !== identifiers[index])) {
+    return null;
+  }
+  return ids;
+}
+
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
   await loadData();
   currentMode = modeFromUrl();
-  const startId = resolvePersonId(location.hash.slice(1));
-  renderTree(buildTree(startId));
+  const comparisonIds = comparisonFromUrl();
+  if (comparisonIds) renderCommonAncestorTree(comparisonIds[0], comparisonIds[1]);
+  else {
+    const startId = resolvePersonId(location.hash.slice(1));
+    renderTree(buildTree(startId));
+  }
   initSearch();
   initUI();
 })();
@@ -625,10 +657,6 @@ function createNode(person, x, y, isRoot = false) {
   div.addEventListener('contextmenu', event => {
     if (event.target.closest && event.target.closest('.node-num')) return;
     event.preventDefault();
-    if (isRoot) {
-      hidePersonContextMenu();
-      return;
-    }
     showPersonContextMenu(person, event.clientX, event.clientY);
   });
   return div;
@@ -984,13 +1012,50 @@ function hidePersonContextMenu() {
   if (menu) menu.style.display = 'none';
 }
 
+function comparisonPersonName(person) {
+  return formatName(person.given, person.patronymic, person.surname, person.maiden) ||
+    `Асоба #${person.id}`;
+}
+
+function updateContextComparisonUi() {
+  const status = document.getElementById('comparison-pick-status');
+  const name = document.getElementById('comparison-pick-name');
+  if (!status || !name) return;
+  status.style.display = contextComparisonPerson ? 'flex' : 'none';
+  name.textContent = contextComparisonPerson
+    ? `Агульныя продкі: ${comparisonPersonName(contextComparisonPerson)}`
+    : '';
+}
+
+function clearContextComparisonPerson() {
+  contextComparisonPerson = null;
+  updateContextComparisonUi();
+}
+
 function showPersonContextMenu(person, clientX, clientY) {
   const menu = document.getElementById('person-context-menu');
+  const showTree = document.getElementById('context-show-tree');
+  const compareLabel = document.getElementById('context-compare-label');
+  const compareFrom = document.getElementById('context-compare-from');
   menu.dataset.personId = String(person.id);
+  showTree.style.display = !currentComparison && person.id === currentRootId ? 'none' : 'flex';
+  menu.classList.toggle('single-action', showTree.style.display === 'none');
+
+  if (!contextComparisonPerson) {
+    compareLabel.textContent = 'Выбраць для параўнання';
+    compareFrom.style.display = 'none';
+  } else if (contextComparisonPerson.id === person.id) {
+    compareLabel.textContent = 'Скасаваць выбар';
+    compareFrom.style.display = 'none';
+  } else {
+    compareLabel.textContent = 'Паказаць агульных продкаў';
+    compareFrom.textContent = `з ${comparisonPersonName(contextComparisonPerson)}`;
+    compareFrom.style.display = 'block';
+  }
   menu.style.display = 'block';
 
-  const menuWidth = menu.offsetWidth || 180;
-  const menuHeight = menu.offsetHeight || 44;
+  const menuWidth = menu.offsetWidth || 238;
+  const menuHeight = menu.offsetHeight || (showTree.style.display === 'none' ? 44 : 84);
   const left = Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8));
   const top = Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8));
   menu.style.left = `${left}px`;
@@ -1111,6 +1176,7 @@ function renderCommonAncestorTree(firstId, secondId) {
   canvas.innerHTML = '';
   currentComparison = [firstPerson.id, secondPerson.id];
   currentRootId = firstPerson.id;
+  syncComparisonUrl(firstPerson.id, secondPerson.id);
   hidePersonContextMenu();
   document.getElementById('detail-panel').style.display = 'none';
   document.getElementById('descendant-limit-control').style.display = 'none';
@@ -1331,6 +1397,33 @@ function initUI() {
     if (!personId) return;
     navigate(personId);
   });
+  document.getElementById('context-compare').addEventListener('click', () => {
+    const personId = Number(contextMenu.dataset.personId);
+    const person = buildPerson(personId);
+    if (!person) return;
+
+    if (!contextComparisonPerson) {
+      contextComparisonPerson = person;
+      updateContextComparisonUi();
+      hidePersonContextMenu();
+      return;
+    }
+    if (contextComparisonPerson.id === person.id) {
+      clearContextComparisonPerson();
+      hidePersonContextMenu();
+      return;
+    }
+
+    const firstPerson = contextComparisonPerson;
+    clearContextComparisonPerson();
+    hidePersonContextMenu();
+    renderCommonAncestorTree(firstPerson.id, person.id);
+  });
+  document.getElementById('comparison-pick-clear').addEventListener('click', () => {
+    clearContextComparisonPerson();
+    hidePersonContextMenu();
+  });
+  updateContextComparisonUi();
 
   document.addEventListener('click', event => {
     if (!contextMenu.contains(event.target)) hidePersonContextMenu();
@@ -1341,8 +1434,6 @@ function initUI() {
   document.getElementById('canvas-wrap').addEventListener('scroll', hidePersonContextMenu);
   window.addEventListener('resize', hidePersonContextMenu);
   window.addEventListener('blur', hidePersonContextMenu);
-
-  initCommonAncestorUI();
 
   window.addEventListener('hashchange', () => {
     const hashValue = location.hash.slice(1);
@@ -1448,108 +1539,3 @@ function initSearch() {
     }
   });
 }
-
-function initCommonAncestorUI() {
-  const overlay = document.getElementById('common-ancestor-overlay');
-  const closeButton = document.getElementById('common-ancestor-close');
-  const buildButton = document.getElementById('common-ancestor-build');
-  const status = document.getElementById('common-ancestor-status');
-  const inputs = [
-    document.getElementById('common-person-1'),
-    document.getElementById('common-person-2'),
-  ];
-  const resultLists = [
-    document.getElementById('common-results-1'),
-    document.getElementById('common-results-2'),
-  ];
-
-  function updateBuildState() {
-    const samePerson = commonAncestorSelection[0] && commonAncestorSelection[1] &&
-      commonAncestorSelection[0].id === commonAncestorSelection[1].id;
-    buildButton.disabled = !commonAncestorSelection[0] || !commonAncestorSelection[1] || samePerson;
-    status.textContent = samePerson ? 'Выберыце дзвюх розных асоб.' : '';
-  }
-
-  function closeDialog() {
-    overlay.style.display = 'none';
-    resultLists.forEach(results => { results.style.display = 'none'; });
-  }
-
-  function setupPicker(index) {
-    const input = inputs[index];
-    const results = resultLists[index];
-    const pageSize = 20;
-    let debounce = null;
-    let matches = [];
-    let renderedCount = 0;
-
-    function appendMatches() {
-      const nextMatches = matches.slice(renderedCount, renderedCount + pageSize);
-      nextMatches.forEach(({ r }) => {
-        appendPersonSearchResult(results, r, id => {
-          const person = buildPerson(id);
-          if (!person) return;
-          commonAncestorSelection[index] = person;
-          const name = formatName(person.given, person.patronymic, person.surname, person.maiden) || `Асоба #${person.id}`;
-          const idLabel = person.num != null ? `#${person.num}` : `~${person.id}`;
-          input.value = `${name} · ${idLabel}`;
-          results.style.display = 'none';
-          updateBuildState();
-        });
-      });
-      renderedCount += nextMatches.length;
-    }
-
-    input.addEventListener('input', () => {
-      clearTimeout(debounce);
-      commonAncestorSelection[index] = null;
-      updateBuildState();
-      const raw = input.value.trim().toLowerCase();
-      if (raw.length < 2) {
-        results.style.display = 'none';
-        return;
-      }
-
-      debounce = setTimeout(() => {
-        matches = findPersonMatches(raw);
-        results.innerHTML = '';
-        renderedCount = 0;
-        results.scrollTop = 0;
-        if (!matches.length) {
-          results.style.display = 'none';
-          return;
-        }
-        appendMatches();
-        results.style.display = 'block';
-      }, 200);
-    });
-
-    results.addEventListener('scroll', () => {
-      const nearBottom = results.scrollTop + results.clientHeight >= results.scrollHeight - 40;
-      if (nearBottom && renderedCount < matches.length) appendMatches();
-    });
-  }
-
-  setupPicker(0);
-  setupPicker(1);
-  updateBuildState();
-
-  document.getElementById('btn-common-ancestors').addEventListener('click', () => {
-    status.textContent = '';
-    overlay.style.display = 'flex';
-  });
-  closeButton.addEventListener('click', closeDialog);
-  overlay.addEventListener('click', event => {
-    if (event.target === overlay) closeDialog();
-  });
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && overlay.style.display !== 'none') closeDialog();
-  });
-  buildButton.addEventListener('click', () => {
-    if (buildButton.disabled) return;
-    const [firstPerson, secondPerson] = commonAncestorSelection;
-    closeDialog();
-    renderCommonAncestorTree(firstPerson.id, secondPerson.id);
-  });
-}
-

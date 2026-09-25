@@ -46,21 +46,24 @@ describe('UI layout', function() {
     const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
     const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
     const contextMenu = cssRule(css, '#person-context-menu');
-    const contextAction = cssRule(css, '#context-show-tree');
+    const contextAction = cssRule(css, '.person-context-action');
 
-    assert.match(contextMenu, /width:\s*184px/);
+    assert.match(contextMenu, /width:\s*238px/);
     assert.match(contextMenu, /border-radius:\s*8px/);
     assert.match(contextAction, /min-height:\s*34px/);
     assert.match(contextAction, /justify-content:\s*space-between/);
     assert.match(html, /class="context-menu-arrow"[^>]*>→<\/span>/);
+    assert.match(html, /id="context-compare"/);
+    assert.match(html, /id="context-compare-label"[^>]*>Выбраць для параўнання<\/span>/);
   });
 
-  it('provides a two-person common-ancestor picker', function() {
+  it('uses tree selection for common-ancestor comparisons', function() {
     const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
 
-    assert.match(html, /id="btn-common-ancestors"[^>]*>Агульныя продкі<\/button>/);
-    assert.match(html, /id="common-person-1"/);
-    assert.match(html, /id="common-person-2"/);
-    assert.match(html, /id="common-ancestor-build"[^>]*disabled>Пабудаваць дрэва<\/button>/);
+    assert.doesNotMatch(html, /id="btn-common-ancestors"/);
+    assert.doesNotMatch(html, /id="common-ancestor-overlay"/);
+    assert.match(html, /id="context-compare"/);
+    assert.match(html, /id="comparison-pick-status"/);
+    assert.match(html, /id="comparison-pick-clear"[^>]*aria-label="Скасаваць выбар"/);
   });
 });
