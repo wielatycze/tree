@@ -66,4 +66,25 @@ describe('UI layout', function() {
     assert.match(html, /id="comparison-pick-status"/);
     assert.match(html, /id="comparison-pick-clear"[^>]*aria-label="Скасаваць выбар"/);
   });
+
+  it('links to a separate, incrementally rendered people directory', function() {
+    const treeHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const peopleHtml = fs.readFileSync(path.join(process.cwd(), 'people.html'), 'utf8');
+    const peopleJs = fs.readFileSync(path.join(process.cwd(), 'people.js'), 'utf8');
+    const peopleCss = fs.readFileSync(path.join(process.cwd(), 'people.css'), 'utf8');
+
+    assert.match(treeHtml, /class="btn helper-page-link"[^>]*href="people\.html"[^>]*aria-label="Спіс асоб"/);
+    assert.match(treeHtml, /<div id="toolbar">\s*<a class="btn helper-page-link"[\s\S]*?<\/a>\s*<h1>Вяляцічы і воласць<\/h1>/);
+    assert.match(peopleHtml, /<table id="people-table">/);
+    ['surname', 'given', 'patronymic', 'birth', 'death', 'place', 'id'].forEach(field => {
+      assert.match(peopleHtml, new RegExp(`data-filter="${field}"`));
+      assert.match(peopleHtml, new RegExp(`data-sort="${field}"`));
+    });
+    assert.match(peopleJs, /const PAGE_SIZE = 200/);
+    assert.match(peopleJs, /visibleRows\.slice\(renderedCount, renderedCount \+ PAGE_SIZE\)/);
+    assert.match(peopleJs, /tableWrap\.addEventListener\('scroll'/);
+    assert.match(peopleCss, /#people-table-wrap\s*\{[^}]*overflow:\s*auto/s);
+    assert.match(peopleCss, /\.column-headings th\s*\{[^}]*position:\s*sticky/s);
+    assert.match(peopleCss, /\.column-filters th\s*\{[^}]*position:\s*sticky/s);
+  });
 });

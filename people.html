@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="be">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Спіс асоб — Вяляцічы і воласць</title>
+  <link rel="stylesheet" href="people.css">
+</head>
+<body>
+  <header id="people-toolbar">
+    <a class="icon-button" href="index.html" aria-label="Да дрэва" title="Да дрэва">←</a>
+    <h1>Спіс асоб</h1>
+    <span id="people-count" aria-live="polite"></span>
+    <button class="icon-button" id="clear-filters" type="button" aria-label="Ачысціць фільтры" title="Ачысціць фільтры" disabled>×</button>
+  </header>
+
+  <main id="people-table-wrap">
+    <table id="people-table">
+      <colgroup>
+        <col class="col-surname">
+        <col class="col-given">
+        <col class="col-patronymic">
+        <col class="col-date">
+        <col class="col-date">
+        <col class="col-place">
+        <col class="col-id">
+      </colgroup>
+      <thead>
+        <tr class="column-headings">
+          <th><button class="sort-button" type="button" data-sort="surname">Прозвішча <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="given">Імя <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="patronymic">Імя па бацьку <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="birth">Нараджэнне <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="death">Смерць <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="place">Месца <span aria-hidden="true"></span></button></th>
+          <th><button class="sort-button" type="button" data-sort="id">ID <span aria-hidden="true"></span></button></th>
+        </tr>
+        <tr class="column-filters">
+          <th><input data-filter="surname" aria-label="Фільтр прозвішча" placeholder="Фільтр"></th>
+          <th><input data-filter="given" aria-label="Фільтр імя" placeholder="Фільтр"></th>
+          <th><input data-filter="patronymic" aria-label="Фільтр імя па бацьку" placeholder="Фільтр"></th>
+          <th><input data-filter="birth" aria-label="Фільтр даты нараджэння" placeholder="Фільтр"></th>
+          <th><input data-filter="death" aria-label="Фільтр даты смерці" placeholder="Фільтр"></th>
+          <th><input data-filter="place" aria-label="Фільтр месца" placeholder="Фільтр"></th>
+          <th><input data-filter="id" aria-label="Фільтр ID" placeholder="Фільтр"></th>
+        </tr>
+      </thead>
+      <tbody id="people-body"></tbody>
+    </table>
+    <div id="people-loading">Загрузка дадзеных…</div>
+  </main>
+
+  <script src="people-list.js"></script>
+  <script src="people.js"></script>
+</body>
+</html>

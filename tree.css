@@ -167,6 +167,50 @@ body {
   transform: translateY(0);
 }
 
+.helper-page-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 28px;
+  color: #666;
+  font-size: 17px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.helper-page-link::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 300;
+  padding: 5px 8px;
+  border: 1px solid #d0cdc8;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+  font-size: 11px;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -2px);
+  transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.helper-page-link:hover::after,
+.helper-page-link:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
 /* ── Mode toggle ──────────────────────────────────────────── */
 .mode-toggle {
   display: flex;
