@@ -76,11 +76,19 @@ describe('UI layout', function() {
     assert.match(treeHtml, /class="btn helper-page-link"[^>]*href="people\.html"[^>]*aria-label="Спіс асоб"/);
     assert.match(treeHtml, /<div id="toolbar">\s*<a class="btn helper-page-link"[\s\S]*?<\/a>\s*<h1>Вяляцічы і воласць<\/h1>/);
     assert.match(peopleHtml, /<table id="people-table">/);
-    ['surname', 'given', 'patronymic', 'birth', 'death', 'place', 'id'].forEach(field => {
+    ['surname', 'given', 'patronymic', 'place', 'id'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`data-filter="${field}"`));
+    });
+    ['birthFrom', 'birthTo', 'deathFrom', 'deathTo'].forEach(field => {
+      assert.match(peopleHtml, new RegExp(`type="range" data-filter="${field}"`));
+    });
+    ['surname', 'given', 'patronymic', 'birth', 'death', 'place', 'id'].forEach(field => {
       assert.match(peopleHtml, new RegExp(`data-sort="${field}"`));
     });
     assert.match(peopleJs, /const PAGE_SIZE = 200/);
+    assert.match(peopleJs, /function setupDateRanges\(\)/);
+    assert.match(peopleJs, /Math\.min\(\.\.\.years\)/);
+    assert.match(peopleJs, /Math\.max\(\.\.\.years\)/);
     assert.match(peopleJs, /visibleRows\.slice\(renderedCount, renderedCount \+ PAGE_SIZE\)/);
     assert.match(peopleJs, /tableWrap\.addEventListener\('scroll'/);
     assert.match(peopleCss, /#people-table-wrap\s*\{[^}]*overflow:\s*auto/s);

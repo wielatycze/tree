@@ -153,7 +153,7 @@ td:last-child {
   background: #faf9f7;
 }
 
-.column-filters input {
+.column-filters input:not([type="range"]) {
   width: 100%;
   height: 28px;
   padding: 4px 7px;
@@ -164,9 +164,99 @@ td:last-child {
   font-size: 11px;
 }
 
-.column-filters input:focus {
+.column-filters input:not([type="range"]):focus {
   border-color: #5b8fcc;
   outline: 2px solid rgba(91,143,204,0.14);
+}
+
+.date-range-filter {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  height: 29px;
+}
+
+.date-range-value {
+  height: 12px;
+  color: #615c57;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+  text-align: center;
+}
+
+.date-range-sliders {
+  position: relative;
+  height: 12px;
+}
+
+.date-range-sliders::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 3px;
+  left: 3px;
+  height: 2px;
+  border-radius: 1px;
+  background: #c9c6c1;
+}
+
+.date-range-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.date-range-input::-webkit-slider-runnable-track {
+  height: 2px;
+  background: transparent;
+}
+
+.date-range-input::-webkit-slider-thumb {
+  width: 11px;
+  height: 11px;
+  margin-top: -5px;
+  appearance: none;
+  border: 1px solid #477bae;
+  border-radius: 50%;
+  background: #fff;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.date-range-input::-moz-range-track {
+  height: 2px;
+  background: transparent;
+}
+
+.date-range-input::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #477bae;
+  border-radius: 50%;
+  background: #fff;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.date-range-input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid rgba(91,143,204,0.3);
+  outline-offset: 1px;
+}
+
+.date-range-input:focus-visible::-moz-range-thumb {
+  outline: 2px solid rgba(91,143,204,0.3);
+  outline-offset: 1px;
 }
 
 tbody tr:nth-child(even) {

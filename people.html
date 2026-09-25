@@ -39,8 +39,24 @@
           <th><input data-filter="surname" aria-label="Фільтр прозвішча" placeholder="Фільтр"></th>
           <th><input data-filter="given" aria-label="Фільтр імя" placeholder="Фільтр"></th>
           <th><input data-filter="patronymic" aria-label="Фільтр імя па бацьку" placeholder="Фільтр"></th>
-          <th><input data-filter="birth" aria-label="Фільтр даты нараджэння" placeholder="Фільтр"></th>
-          <th><input data-filter="death" aria-label="Фільтр даты смерці" placeholder="Фільтр"></th>
+          <th>
+            <div class="date-range-filter" data-date-range="birth">
+              <output class="date-range-value" data-range-output="birth"></output>
+              <div class="date-range-sliders">
+                <input class="date-range-input date-range-lower" type="range" data-filter="birthFrom" aria-label="Нараджэнне ад года" disabled>
+                <input class="date-range-input date-range-upper" type="range" data-filter="birthTo" aria-label="Нараджэнне да года" disabled>
+              </div>
+            </div>
+          </th>
+          <th>
+            <div class="date-range-filter" data-date-range="death">
+              <output class="date-range-value" data-range-output="death"></output>
+              <div class="date-range-sliders">
+                <input class="date-range-input date-range-lower" type="range" data-filter="deathFrom" aria-label="Смерць ад года" disabled>
+                <input class="date-range-input date-range-upper" type="range" data-filter="deathTo" aria-label="Смерць да года" disabled>
+              </div>
+            </div>
+          </th>
           <th><input data-filter="place" aria-label="Фільтр месца" placeholder="Фільтр"></th>
           <th><input data-filter="id" aria-label="Фільтр ID" placeholder="Фільтр"></th>
         </tr>

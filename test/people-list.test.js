@@ -45,8 +45,12 @@ describe('People list', function() {
       [12]
     );
     assert.deepStrictEqual(
-      PeopleList.filterRows(people, { given: 'петр', patronymic: 'сав', birth: '1878' }).map(row => row.id),
+      PeopleList.filterRows(people, { given: 'петр', patronymic: 'сав', birthFrom: '1870', birthTo: '1880' }).map(row => row.id),
       [7]
+    );
+    assert.deepStrictEqual(
+      PeopleList.filterRows(people, { deathFrom: '1950', deathTo: '1960' }).map(row => row.id),
+      [12]
     );
     assert.deepStrictEqual(
       PeopleList.filterRows(people, { id: '#494' }).map(row => row.id),

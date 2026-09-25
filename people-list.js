@@ -66,11 +66,25 @@
 
   function filterRows(rows, filters) {
     const activeFilters = Object.entries(filters)
+      .filter(([key]) => !/^(birth|death)(From|To)$/.test(key))
       .map(([key, value]) => [key, normalize(value)])
       .filter(([, value]) => value);
-    if (!activeFilters.length) return rows;
+    const ranges = ['birth', 'death'].map(key => ({
+      key,
+      from: Number.parseInt(filters[`${key}From`], 10),
+      to: Number.parseInt(filters[`${key}To`], 10),
+    })).filter(range => Number.isFinite(range.from) || Number.isFinite(range.to));
+
+    if (!activeFilters.length && !ranges.length) return rows;
     return rows.filter(row =>
-      activeFilters.every(([key, value]) => row.search[key].includes(value))
+      activeFilters.every(([key, value]) => row.search[key].includes(value)) &&
+      ranges.every(({ key, from, to }) => {
+        const sortValue = row[`${key}Sort`];
+        if (sortValue == null) return false;
+        const year = Math.floor(sortValue / 10000);
+        return (!Number.isFinite(from) || year >= from) &&
+          (!Number.isFinite(to) || year <= to);
+      })
     );
   }
 

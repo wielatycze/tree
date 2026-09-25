@@ -18,6 +18,43 @@ const clearFilters = document.getElementById('clear-filters');
 const filterInputs = Array.from(document.querySelectorAll('[data-filter]'));
 const sortButtons = Array.from(document.querySelectorAll('[data-sort]'));
 
+function dateRangeInputs(key) {
+  return {
+    from: document.querySelector(`[data-filter="${key}From"]`),
+    to: document.querySelector(`[data-filter="${key}To"]`),
+    output: document.querySelector(`[data-range-output="${key}"]`),
+  };
+}
+
+function updateDateRange(key, changedInput = null) {
+  const { from, to, output } = dateRangeInputs(key);
+  if (changedInput === from && Number(from.value) > Number(to.value)) to.value = from.value;
+  if (changedInput === to && Number(to.value) < Number(from.value)) from.value = to.value;
+  output.textContent = `${from.value}–${to.value}`;
+}
+
+function setupDateRanges() {
+  ['birth', 'death'].forEach(key => {
+    const years = allRows
+      .map(row => row[`${key}Sort`])
+      .filter(value => value != null)
+      .map(value => Math.floor(value / 10000));
+    const min = Math.min(...years);
+    const max = Math.max(...years);
+    const { from, to } = dateRangeInputs(key);
+    [from, to].forEach(input => {
+      input.min = min;
+      input.max = max;
+      input.disabled = false;
+    });
+    from.value = min;
+    to.value = max;
+    from.dataset.defaultValue = min;
+    to.dataset.defaultValue = max;
+    updateDateRange(key);
+  });
+}
+
 function createCell(text, className = '') {
   const cell = document.createElement('td');
   cell.textContent = text;
@@ -59,7 +96,10 @@ function appendNextPage() {
 }
 
 function currentFilters() {
-  return Object.fromEntries(filterInputs.map(input => [input.dataset.filter, input.value]));
+  return Object.fromEntries(filterInputs.map(input => {
+    const isFullRangeEdge = input.type === 'range' && input.value === input.dataset.defaultValue;
+    return [input.dataset.filter, isFullRangeEdge ? '' : input.value];
+  }));
 }
 
 function updateSortIndicators() {
@@ -108,6 +148,7 @@ async function loadPeople() {
       responses.map(response => response.json())
     );
     allRows = PeopleList.createRows(searchIndex, births, deaths, places, numbers);
+    setupDateRanges();
     updateSortIndicators();
     applyView();
   } catch (error) {
@@ -118,6 +159,7 @@ async function loadPeople() {
 
 filterInputs.forEach(input => {
   input.addEventListener('input', () => {
+    if (input.type === 'range') updateDateRange(input.dataset.filter.replace(/(From|To)$/, ''), input);
     clearTimeout(filterTimer);
     filterTimer = setTimeout(applyView, 160);
   });
@@ -137,7 +179,10 @@ sortButtons.forEach(button => {
 });
 
 clearFilters.addEventListener('click', () => {
-  filterInputs.forEach(input => { input.value = ''; });
+  filterInputs.forEach(input => {
+    input.value = input.type === 'range' ? input.dataset.defaultValue : '';
+  });
+  ['birth', 'death'].forEach(key => updateDateRange(key));
   applyView();
 });
 
