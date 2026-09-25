@@ -54,4 +54,13 @@ describe('UI layout', function() {
     assert.match(contextAction, /justify-content:\s*space-between/);
     assert.match(html, /class="context-menu-arrow"[^>]*>→<\/span>/);
   });
+
+  it('provides a two-person common-ancestor picker', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+
+    assert.match(html, /id="btn-common-ancestors"[^>]*>Агульныя продкі<\/button>/);
+    assert.match(html, /id="common-person-1"/);
+    assert.match(html, /id="common-person-2"/);
+    assert.match(html, /id="common-ancestor-build"[^>]*disabled>Пабудаваць дрэва<\/button>/);
+  });
 });

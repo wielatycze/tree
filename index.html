@@ -28,6 +28,7 @@
       <button class="mode-btn" data-mode="ancestors">Продкі</button>
       <button class="mode-btn mode-btn-active" data-mode="descendants">Продкі і нашчадкі</button>
     </div>
+    <button class="btn" id="btn-common-ancestors" type="button">Агульныя продкі</button>
     <div class="generation-limit" id="descendant-limit-control" style="display:none" role="group" aria-label="Ліміт пакаленняў нашчадкаў">
       <span>Пакаленні</span>
       <div class="generation-limit-options" id="descendant-limit-options"></div>
@@ -53,6 +54,31 @@
     <span id="detail-close">×</span>
   </div>
 
+  <div id="common-ancestor-overlay" style="display:none">
+    <section id="common-ancestor-dialog" role="dialog" aria-modal="true" aria-labelledby="common-ancestor-title">
+      <header class="common-dialog-header">
+        <h2 id="common-ancestor-title">Агульныя продкі</h2>
+        <button class="dialog-close" id="common-ancestor-close" type="button" aria-label="Закрыць" title="Закрыць">×</button>
+      </header>
+      <div class="common-person-fields">
+        <div class="common-person-picker">
+          <label for="common-person-1">Першая асоба</label>
+          <input id="common-person-1" autocomplete="off" placeholder="Імя або прозвішча">
+          <div class="common-picker-results" id="common-results-1" style="display:none"></div>
+        </div>
+        <div class="common-person-picker">
+          <label for="common-person-2">Другая асоба</label>
+          <input id="common-person-2" autocomplete="off" placeholder="Імя або прозвішча">
+          <div class="common-picker-results" id="common-results-2" style="display:none"></div>
+        </div>
+      </div>
+      <div id="common-ancestor-status" role="status"></div>
+      <div class="common-dialog-actions">
+        <button class="btn common-build-btn" id="common-ancestor-build" type="button" disabled>Пабудаваць дрэва</button>
+      </div>
+    </section>
+  </div>
+
   <div id="person-context-menu" role="menu" style="display:none">
     <button id="context-show-tree" type="button" role="menuitem">
       <span>Паказаць дрэва</span>
@@ -62,6 +88,7 @@
 
   <script src="tree-layout.js"></script>
   <script src="descendant-layout.js"></script>
+  <script src="common-ancestor-layout.js"></script>
   <script src="tree.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@ const vm = require('vm');
 
 const TreeLayout = require('../tree-layout');
 const DescendantLayout = require('../descendant-layout');
+const CommonAncestorLayout = require('../common-ancestor-layout');
 
 const NODE_W = 152;
 const NODE_H = 88;
@@ -32,9 +33,23 @@ class FakeElement {
     this.scrollHeight = 0;
     this.style = { cssText: '', display: '', width: '' };
     this.classList = {
-      add() {},
-      remove() {},
-      toggle() {},
+      add: (...tokens) => {
+        const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+        tokens.forEach(token => classes.add(token));
+        this.className = Array.from(classes).join(' ');
+      },
+      remove: (...tokens) => {
+        const remove = new Set(tokens);
+        this.className = this.className.split(/\s+/).filter(token => token && !remove.has(token)).join(' ');
+      },
+      toggle: (token, force) => {
+        const classes = new Set(this.className.split(/\s+/).filter(Boolean));
+        const enabled = force == null ? !classes.has(token) : force;
+        if (enabled) classes.add(token);
+        else classes.delete(token);
+        this.className = Array.from(classes).join(' ');
+        return enabled;
+      },
     };
   }
 
@@ -232,6 +247,16 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     'tree-count',
     'person-context-menu',
     'context-show-tree',
+    'btn-common-ancestors',
+    'common-ancestor-overlay',
+    'common-ancestor-dialog',
+    'common-ancestor-close',
+    'common-person-1',
+    'common-person-2',
+    'common-results-1',
+    'common-results-2',
+    'common-ancestor-status',
+    'common-ancestor-build',
   ].forEach(elementById);
 
   const modeButtons = [
@@ -252,6 +277,7 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     clearTimeout,
     TreeLayout,
     DescendantLayout,
+    CommonAncestorLayout,
     window: {
       innerWidth: 1400,
       innerHeight: 900,
@@ -325,6 +351,12 @@ async function renderTreeFixture(rootId, mode = 'descendants', descendantLimit =
     searchResults: elementById('search-results'),
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
+    commonAncestorOverlay: elementById('common-ancestor-overlay'),
+    commonAncestorOpen: elementById('btn-common-ancestors'),
+    commonAncestorBuild: elementById('common-ancestor-build'),
+    commonPersonInputs: [elementById('common-person-1'), elementById('common-person-2')],
+    commonPersonResults: [elementById('common-results-1'), elementById('common-results-2')],
+    renderCommonAncestorTree: context.renderCommonAncestorTree,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
   };
@@ -335,6 +367,243 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('selects two people from the full search index and builds their comparison', async function() {
+    const fixture = await renderTreeFixture(11083);
+
+    fixture.commonAncestorOpen.dispatchEvent({ type: 'click' });
+    assert.strictEqual(fixture.commonAncestorOverlay.style.display, 'flex');
+
+    fixture.commonPersonInputs[0].value = 'луцея дементьева';
+    fixture.commonPersonInputs[0].dispatchEvent({ type: 'input' });
+    await new Promise(resolve => setTimeout(resolve, 230));
+    fixture.commonPersonResults[0].children[0].dispatchEvent({ type: 'click' });
+
+    fixture.commonPersonInputs[1].value = 'синклита дементьева';
+    fixture.commonPersonInputs[1].dispatchEvent({ type: 'input' });
+    await new Promise(resolve => setTimeout(resolve, 230));
+    fixture.commonPersonResults[1].children[0].dispatchEvent({ type: 'click' });
+
+    assert.strictEqual(fixture.commonAncestorBuild.disabled, false);
+    fixture.commonAncestorBuild.dispatchEvent({ type: 'click' });
+    assert.strictEqual(fixture.commonAncestorOverlay.style.display, 'none');
+    assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
+  });
+
+  it('renders only the minimal paths to every nearest common ancestor', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    fixture.renderCommonAncestorTree(1, 464);
+    const comparisonNodes = fixture.canvas.children.filter(child =>
+      child.className && child.className.includes('node')
+    );
+    const comparisonIds = comparisonNodes.map(node => String(node.dataset.id)).sort();
+    const commonIds = comparisonNodes
+      .filter(node => node.className.includes('is-common-ancestor'))
+      .map(node => String(node.dataset.id))
+      .sort();
+    const comparisonSvg = fixture.canvas.children.find(child => child.tag === 'svg');
+
+    assert.deepStrictEqual(comparisonIds, ['1', '1551', '463', '464']);
+    assert.deepStrictEqual(commonIds, ['1551', '463']);
+    assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
+    const coupleLines = comparisonSvg.children.filter(connector =>
+      connector.attributes['data-couple-id'] != null
+    );
+    assert.strictEqual(coupleLines.length, 1);
+    assert.strictEqual(coupleLines[0].attributes.stroke, '#999');
+    assert.strictEqual(coupleLines[0].attributes['stroke-dasharray'], '5,4');
+  });
+
+  it('keeps common-ancestor path connectors out of unrelated cards', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    fixture.renderCommonAncestorTree(7875, 10822);
+    const comparisonNodes = fixture.canvas.children.filter(child =>
+      child.className && child.className.includes('node')
+    );
+    const comparisonSvg = fixture.canvas.children.find(child => child.tag === 'svg');
+    const relationshipPaths = comparisonSvg.children.filter(path =>
+      path.attributes['data-child-id'] != null
+    );
+
+    assert.strictEqual(comparisonNodes.length, 6);
+    assert.ok(comparisonSvg.children.every(connector => ['line', 'path'].includes(connector.tag)));
+    assert.ok(
+      relationshipPaths.every(path => ['straight', 'orthogonal'].includes(path.attributes['data-routed'])),
+      'expected comparison relationships to use only direct routes'
+    );
+    assert.ok(
+      relationshipPaths.every(path => !path.attributes.d.includes('C')),
+      'expected no curved comparison connectors'
+    );
+  });
+
+  it('shows included co-parents as a couple without crossing cards or other routes', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    fixture.renderCommonAncestorTree(16591, 17605);
+    const comparisonSvg = fixture.canvas.children.find(child => child.tag === 'svg');
+    const paths = comparisonSvg.children.filter(path => path.attributes['data-child-id'] != null);
+    const agripinaParentPaths = paths.filter(path => path.attributes['data-child-id'] === '2785');
+    const bogusFedosiaFromEmelyan = paths.find(path =>
+      path.attributes['data-child-id'] === '2633' && path.attributes['data-parent-id'] === '1046'
+    );
+    const agripinaPath = paths.find(path =>
+      path.attributes['data-child-id'] === '2785' && path.attributes['data-parent-id'] === '1046'
+    );
+    const commonCouple = comparisonSvg.children.find(path =>
+      path.attributes['data-couple-id'] === '1147:2633'
+    );
+    const coupleChildren = paths.filter(path =>
+      path.attributes['data-parent-id'] === '1147:2633'
+    );
+    const commonParentNodes = fixture.canvas.children.filter(child =>
+      child.dataset && (String(child.dataset.id) === '1147' || String(child.dataset.id) === '2633')
+    );
+    const nodeById = id => fixture.canvas.children.find(child =>
+      child.dataset && String(child.dataset.id) === String(id)
+    );
+    const nodeCentre = id => {
+      const node = nodeById(id);
+      return Number(node.style.cssText.match(/left:([\d.]+)px/)[1]) + NODE_W / 2;
+    };
+    const pathPoints = path => {
+      const values = path.attributes.d.match(/-?[\d.]+/g).map(Number);
+      const points = [];
+      for (let index = 0; index < values.length; index += 2) {
+        points.push({ x: values[index], y: values[index + 1] });
+      }
+      return points;
+    };
+    const pathSegments = path => {
+      const points = pathPoints(path);
+      return points.slice(1).map((point, index) => [points[index], point]);
+    };
+    const nodeRect = node => {
+      const left = Number(node.style.cssText.match(/left:([\d.]+)px/)[1]);
+      const top = Number(node.style.cssText.match(/top:([\d.]+)px/)[1]);
+      return { left, right: left + NODE_W, top, bottom: top + NODE_H };
+    };
+    const segmentCrossesRect = ([start, end], rect) => {
+      if (start.x === end.x) {
+        return start.x > rect.left && start.x < rect.right &&
+          Math.max(start.y, end.y) > rect.top && Math.min(start.y, end.y) < rect.bottom;
+      }
+      return start.y > rect.top && start.y < rect.bottom &&
+        Math.max(start.x, end.x) > rect.left && Math.min(start.x, end.x) < rect.right;
+    };
+    const properSegmentCrossing = ([a1, a2], [b1, b2]) => {
+      const aVertical = a1.x === a2.x;
+      const bVertical = b1.x === b2.x;
+      if (aVertical === bVertical) return false;
+      const vertical = aVertical ? [a1, a2] : [b1, b2];
+      const horizontal = aVertical ? [b1, b2] : [a1, a2];
+      return vertical[0].x > Math.min(horizontal[0].x, horizontal[1].x) &&
+        vertical[0].x < Math.max(horizontal[0].x, horizontal[1].x) &&
+        horizontal[0].y > Math.min(vertical[0].y, vertical[1].y) &&
+        horizontal[0].y < Math.max(vertical[0].y, vertical[1].y);
+    };
+
+    assert.deepStrictEqual(
+      agripinaParentPaths.map(path => path.attributes['data-parent-id']),
+      ['1046'],
+      'expected Agripina to connect only to displayed parent #57'
+    );
+    assert.strictEqual(bogusFedosiaFromEmelyan, undefined, 'expected no #57 to #1044 relationship');
+    assert.ok(agripinaPath, 'expected the real #57 to Agripina relationship');
+    assert.strictEqual(agripinaPath.attributes['data-routed'], 'orthogonal');
+    assert.ok(commonCouple, 'expected #223 and #1044 to be shown as a couple');
+    assert.strictEqual(commonCouple.tag, 'line');
+    assert.strictEqual(commonCouple.attributes.stroke, '#999');
+    assert.strictEqual(commonCouple.attributes['stroke-width'], '1.5');
+    assert.strictEqual(commonCouple.attributes['stroke-dasharray'], '5,4');
+    assert.strictEqual(commonParentNodes.length, 2);
+    const commonParentLefts = commonParentNodes.map(node =>
+      Number(node.style.cssText.match(/left:([\d.]+)px/)[1])
+    );
+    assert.strictEqual(
+      Math.abs(commonParentLefts[0] - commonParentLefts[1]),
+      NODE_W + 64,
+      'expected the common-ancestor couple to remain adjacent'
+    );
+    assert.deepStrictEqual(
+      coupleChildren.map(path => path.attributes['data-child-id']).sort(),
+      ['1148', '2596'],
+      'expected both displayed descendant branches to leave from the couple'
+    );
+    assert.deepStrictEqual(
+      pathPoints(coupleChildren[0])[0],
+      pathPoints(coupleChildren[1])[0],
+      'expected the #223/#1044 child branches to split at one junction'
+    );
+    const commonParentBottom = Math.max(...commonParentNodes.map(node => nodeRect(node).bottom));
+    assert.ok(
+      pathPoints(coupleChildren[0])[0].y >= commonParentBottom + 30,
+      'expected the #223/#1044 child fork to clear the bottoms of both cards'
+    );
+    const emelyanChildren = paths.filter(path => path.attributes['data-parent-id'] === '1046');
+    assert.deepStrictEqual(
+      pathPoints(emelyanChildren[0])[0],
+      pathPoints(emelyanChildren[1])[0],
+      'expected both #57 descendant branches to split at one junction'
+    );
+    assert.strictEqual(nodeCentre(16591), (nodeCentre(7526) + nodeCentre(7838)) / 2);
+    assert.strictEqual(nodeCentre(17605), (nodeCentre(14877) + nodeCentre(15157)) / 2);
+    assert.strictEqual(
+      paths.find(path => path.attributes['data-child-id'] === '16591').attributes['data-routed'],
+      'straight'
+    );
+    assert.strictEqual(
+      paths.find(path => path.attributes['data-child-id'] === '17605').attributes['data-routed'],
+      'straight'
+    );
+
+    const pathTo2936 = coupleChildren.find(path => path.attributes['data-child-id'] === '2596');
+    assert.ok(pathTo2936, 'expected the #223/#1044 to #2936 route');
+    const nodes = fixture.canvas.children.filter(node => node.dataset && node.dataset.id != null);
+    const cardCrossings = [];
+    paths.forEach(path => {
+      const relatedIds = new Set([
+        path.attributes['data-child-id'],
+        ...path.attributes['data-parent-id'].split(':'),
+      ]);
+      nodes.forEach(node => {
+        if (relatedIds.has(String(node.dataset.id))) return;
+        if (pathSegments(path).some(segment => segmentCrossesRect(segment, nodeRect(node)))) {
+          cardCrossings.push([path.attributes['data-child-id'], String(node.dataset.id)]);
+        }
+      });
+    });
+    const routeCrossings = [];
+    paths.forEach((firstPath, firstIndex) => {
+      paths.slice(firstIndex + 1).forEach(secondPath => {
+        const crosses = pathSegments(firstPath).some(firstSegment =>
+          pathSegments(secondPath).some(secondSegment => properSegmentCrossing(firstSegment, secondSegment))
+        );
+        if (crosses) {
+          routeCrossings.push([
+            firstPath.attributes['data-child-id'],
+            secondPath.attributes['data-child-id'],
+          ]);
+        }
+      });
+    });
+    assert.deepStrictEqual(cardCrossings, []);
+    assert.deepStrictEqual(routeCrossings, []);
+    assert.ok(paths.every(path => path.attributes['data-routed'] !== 'outer'));
+  });
+
+  it('shows an explicit empty state when two people have no common ancestors', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    fixture.renderCommonAncestorTree(43, 62);
+    const emptyState = fixture.canvas.children.find(child => child.className === 'tree-empty-state');
+
+    assert.ok(emptyState, 'expected a no-common-ancestors result');
+    assert.strictEqual(emptyState.textContent, 'Агульных продкаў не знойдзена');
+    assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 0');
+  });
+
   it('shows the number of people currently rendered in the tree', async function() {
     const fixture = await renderTreeFixture(11083, 'descendants', 1);
     const uniquePeople = new Set(fixture.nodes.map(node => node.id)).size;

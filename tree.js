@@ -45,6 +45,8 @@ let DE; // deaths:       {person_id: [y, m, d]}
 let currentRootId = null;
 let currentMode = 'descendants';
 let descendantGenerationLimit = null;
+let currentComparison = null;
+const commonAncestorSelection = [null, null];
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 
@@ -955,7 +957,7 @@ function showDetailPanel(person, node) {
 
   const nav = document.getElementById('detail-nav');
   nav.innerHTML = '';
-  if (person.id !== currentRootId) {
+  if (currentComparison || person.id !== currentRootId) {
     const btn = document.createElement('button');
     btn.className = 'nav-btn';
     btn.textContent = 'Паказаць дрэва →';
@@ -995,7 +997,268 @@ function showPersonContextMenu(person, clientX, clientY) {
   menu.style.top = `${top}px`;
 }
 
+function comparisonPathColor(edge) {
+  const colors = ['#4a7fc1', '#a14f72'];
+  return edge.sources.length > 1 ? '#7557a6' : colors[edge.sources[0] || 0];
+}
+
+function createComparisonPathElements(d, color, attributes = {}) {
+  const pathAttributes = {
+    d,
+    fill: 'none',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  };
+  const halo = svgEl('path', {
+    ...pathAttributes,
+    class: 'comparison-path-halo',
+    stroke: '#f5f4f0',
+    'stroke-width': 5,
+  });
+  const path = svgEl('path', {
+    ...pathAttributes,
+    ...attributes,
+    class: attributes.class || 'comparison-path',
+    stroke: color,
+    'stroke-width': 2,
+  });
+  return { halo, path };
+}
+
+function appendComparisonPath(svg, d, color, attributes = {}) {
+  const elements = createComparisonPathElements(d, color, attributes);
+  svg.appendChild(elements.halo);
+  svg.appendChild(elements.path);
+}
+
+function drawComparisonPath(svg, anchor, child, edge) {
+  const aligned = Math.abs(anchor.cx - child.cx) < 0.5;
+  const turnY = Math.min(child.y - 18, anchor.clearY);
+  const d = aligned
+    ? `M ${anchor.cx} ${anchor.startY} L ${child.cx} ${child.y}`
+    : `M ${anchor.cx} ${anchor.startY} L ${anchor.cx} ${turnY} ` +
+      `L ${child.cx} ${turnY} L ${child.cx} ${child.y}`;
+
+  appendComparisonPath(svg, d, comparisonPathColor(edge), {
+    'data-child-id': edge.childId,
+    'data-parent-id': edge.parentId,
+    'data-routed': aligned ? 'straight' : 'orthogonal',
+  });
+}
+
+function drawComparisonBranches(svg, anchor, branches) {
+  if (!branches.length) return;
+  if (branches.length === 1) {
+    drawComparisonPath(svg, anchor, branches[0].child, branches[0].edge);
+    return;
+  }
+
+  const branchY = Math.min(anchor.clearY, ...branches.map(branch => branch.child.y - 18));
+  const sources = Array.from(new Set(branches.flatMap(branch => branch.edge.sources)));
+  const trunkColor = comparisonPathColor({ sources });
+  const routeElements = [createComparisonPathElements(
+    `M ${anchor.cx} ${anchor.startY} L ${anchor.cx} ${branchY}`,
+    trunkColor,
+    { class: 'comparison-family-trunk' }
+  )];
+
+  branches.forEach(({ child, edge }) => {
+    const aligned = Math.abs(anchor.cx - child.cx) < 0.5;
+    const d = aligned
+      ? `M ${anchor.cx} ${branchY} L ${child.cx} ${child.y}`
+      : `M ${anchor.cx} ${branchY} L ${child.cx} ${branchY} L ${child.cx} ${child.y}`;
+    routeElements.push(createComparisonPathElements(d, comparisonPathColor(edge), {
+      'data-child-id': edge.childId,
+      'data-parent-id': edge.parentId,
+      'data-routed': aligned ? 'straight' : 'orthogonal',
+    }));
+  });
+  routeElements.forEach(elements => svg.appendChild(elements.halo));
+  routeElements.forEach(elements => svg.appendChild(elements.path));
+}
+
+function drawComparisonCouple(svg, firstParent, secondParent, couple) {
+  const left = firstParent.cx < secondParent.cx ? firstParent : secondParent;
+  const right = left === firstParent ? secondParent : firstParent;
+  const y = Math.round((firstParent.y + secondParent.y) / 2 + NODE_H / 2);
+  svg.appendChild(svgEl('line', {
+    x1: left.cx + NODE_W / 2,
+    y1: y,
+    x2: right.cx - NODE_W / 2,
+    y2: y,
+    class: 'comparison-couple-path',
+    stroke: '#999',
+    'stroke-width': 1.5,
+    'stroke-dasharray': '5,4',
+    'data-couple-id': `${couple.firstParentId}:${couple.secondParentId}`,
+  }));
+  return {
+    cx: (firstParent.cx + secondParent.cx) / 2,
+    startY: y,
+    clearY: Math.max(firstParent.y, secondParent.y) + NODE_H + 30,
+  };
+}
+
+function renderCommonAncestorTree(firstId, secondId) {
+  const firstPerson = buildPerson(firstId);
+  const secondPerson = buildPerson(secondId);
+  if (!firstPerson || !secondPerson) return;
+
+  const graph = CommonAncestorLayout.buildMinimalGraph(firstId, secondId, PA);
+  const couples = CommonAncestorLayout.findDisplayedCouples(graph, PA);
+  const canvas = document.getElementById('canvas');
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.innerHTML = '';
+  currentComparison = [firstPerson.id, secondPerson.id];
+  currentRootId = firstPerson.id;
+  hidePersonContextMenu();
+  document.getElementById('detail-panel').style.display = 'none';
+  document.getElementById('descendant-limit-control').style.display = 'none';
+  document.querySelectorAll('.mode-btn').forEach(button => {
+    button.classList.remove('mode-btn-active');
+  });
+
+  const firstName = formatName(firstPerson.given, firstPerson.patronymic,
+                               firstPerson.surname, firstPerson.maiden) || `Асоба #${firstPerson.id}`;
+  const secondName = formatName(secondPerson.given, secondPerson.patronymic,
+                                secondPerson.surname, secondPerson.maiden) || `Асоба #${secondPerson.id}`;
+  const crumb = document.getElementById('crumb');
+  crumb.textContent = `${firstName} ↔ ${secondName}`;
+  crumb.title = crumb.textContent;
+  const treeDocuments = document.getElementById('tree-documents');
+  treeDocuments.style.display = 'none';
+  treeDocuments.removeAttribute('href');
+
+  if (!graph.commonAncestorIds.length) {
+    const width = Math.max(320, wrap.clientWidth || window.innerWidth);
+    const height = Math.max(240, wrap.clientHeight || window.innerHeight - 80);
+    canvas.style.cssText = `width:${width}px;height:${height}px;position:relative`;
+    const emptyState = document.createElement('div');
+    emptyState.className = 'tree-empty-state';
+    emptyState.textContent = 'Агульных продкаў не знойдзена';
+    canvas.appendChild(emptyState);
+    document.getElementById('tree-count').textContent = 'Асоб: 0';
+    wrap.scrollLeft = 0;
+    wrap.scrollTop = 0;
+    return;
+  }
+
+  const maxRank = Math.max(...Object.values(graph.ranks));
+  const comparisonGap = 64;
+  const margin = 24;
+  const sourceLayout = CommonAncestorLayout.layoutSourceTrees(graph, {
+    nodeWidth: NODE_W,
+    siblingGap: comparisonGap,
+    sourceGap: comparisonGap,
+  });
+  const canvasW = sourceLayout.width + margin * 2;
+  const canvasH = 24 + (maxRank + 1) * ROW_H + 40;
+  canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
+  const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
+  canvas.appendChild(svg);
+
+  const positions = new Map();
+  graph.nodeIds.forEach(id => {
+    positions.set(id, {
+      cx: margin + sourceLayout.xById[id],
+      y: 24 + (maxRank - graph.ranks[id]) * ROW_H,
+    });
+  });
+
+  const nodeElements = new Map();
+  graph.nodeIds.forEach(id => {
+    const person = buildPerson(Number(id));
+    const position = positions.get(id);
+    if (!person || !position) return;
+    const node = createNode(person, position.cx - NODE_W / 2, position.y, false);
+    if (id === graph.selectedIds[0]) node.classList.add('is-comparison-first');
+    if (id === graph.selectedIds[1]) node.classList.add('is-comparison-second');
+    if (graph.commonAncestorIds.includes(id)) node.classList.add('is-common-ancestor');
+    canvas.appendChild(node);
+    nodeElements.set(id, node);
+  });
+
+  const coupledEdgeKeys = new Set();
+  couples.forEach(couple => {
+    couple.childIds.forEach(childId => {
+      coupledEdgeKeys.add(`${childId}:${couple.firstParentId}`);
+      coupledEdgeKeys.add(`${childId}:${couple.secondParentId}`);
+    });
+  });
+
+  const singleParentEdges = graph.edges.filter(edge =>
+    !coupledEdgeKeys.has(`${edge.childId}:${edge.parentId}`)
+  );
+  const edgesByParent = new Map();
+  singleParentEdges.forEach(edge => {
+    if (!edgesByParent.has(edge.parentId)) edgesByParent.set(edge.parentId, []);
+    edgesByParent.get(edge.parentId).push(edge);
+  });
+  edgesByParent.forEach((parentEdges, parentId) => {
+    const parent = positions.get(parentId);
+    if (!parent) return;
+    const parentNode = nodeElements.get(parentId);
+    const parentBottom = parent.y + Math.max(NODE_H, parentNode ? parentNode.offsetHeight : 0);
+    const branches = parentEdges
+      .sort((a, b) => positions.get(a.childId).cx - positions.get(b.childId).cx)
+      .map(edge => {
+        const child = positions.get(edge.childId);
+        return child ? { child, edge } : null;
+      })
+      .filter(Boolean);
+    drawComparisonBranches(
+      svg,
+      { cx: parent.cx, startY: parentBottom, clearY: parentBottom + 18 },
+      branches
+    );
+  });
+
+  couples.forEach(couple => {
+    const firstParent = positions.get(couple.firstParentId);
+    const secondParent = positions.get(couple.secondParentId);
+    if (!firstParent || !secondParent) return;
+    const coupleAnchor = drawComparisonCouple(
+      svg,
+      firstParent,
+      secondParent,
+      couple
+    );
+    const branches = couple.childIds
+      .sort((a, b) => positions.get(a).cx - positions.get(b).cx)
+      .map(childId => {
+        const child = positions.get(childId);
+        if (!child) return null;
+        const childEdges = graph.edges.filter(edge =>
+          edge.childId === childId &&
+          (edge.parentId === couple.firstParentId || edge.parentId === couple.secondParentId)
+        );
+        const sources = Array.from(new Set(childEdges.flatMap(edge => edge.sources)));
+        return {
+          child,
+          edge: {
+            childId,
+            parentId: `${couple.firstParentId}:${couple.secondParentId}`,
+            sources,
+          },
+        };
+      })
+      .filter(Boolean);
+    drawComparisonBranches(svg, coupleAnchor, branches);
+  });
+
+  document.getElementById('tree-count').textContent = `Асоб: ${nodeElements.size}`;
+  const vw = wrap.clientWidth || window.innerWidth;
+  const vh = wrap.clientHeight || window.innerHeight - 80;
+  const padLeft = Math.max(0, Math.round((vw - canvasW) / 2));
+  const padTop = Math.max(0, Math.round((vh - canvasH) / 2));
+  canvas.style.cssText += `;margin-left:${padLeft}px;margin-top:${padTop}px`;
+  wrap.scrollLeft = Math.max(0, (canvasW + padLeft - vw) / 2);
+  const selectedY = 24 + maxRank * ROW_H;
+  wrap.scrollTop = Math.max(0, selectedY + padTop - Math.round(vh * 2 / 3));
+}
+
 function navigate(id) {
+  currentComparison = null;
   hidePersonContextMenu();
   document.getElementById('detail-panel').style.display = 'none';
   renderTree(buildTree(id));
@@ -1043,6 +1306,7 @@ function updateDescendantLimitControl(rootId) {
 
 function setMode(mode) {
   if (!TREE_MODES.has(mode)) return;
+  currentComparison = null;
   currentMode = mode;
   syncModeButtons();
   if (currentRootId) updateDescendantLimitControl(currentRootId);
@@ -1078,6 +1342,8 @@ function initUI() {
   window.addEventListener('resize', hidePersonContextMenu);
   window.addEventListener('blur', hidePersonContextMenu);
 
+  initCommonAncestorUI();
+
   window.addEventListener('hashchange', () => {
     const hashValue = location.hash.slice(1);
     if (!hashValue) return;
@@ -1087,6 +1353,50 @@ function initUI() {
 }
 
 // ── Search ───────────────────────────────────────────────────
+
+function findPersonMatches(rawQuery) {
+  const words = rawQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+
+  const matches = [];
+  for (const r of SI) {
+    const [, , given, patronymic, surname, maiden] = r;
+    const fields = [given, patronymic, surname, maiden]
+      .filter(Boolean)
+      .map(value => value.toLowerCase());
+    const allMatch = words.every(word =>
+      fields.some(field => field.startsWith(word) || field.includes(word))
+    );
+    if (!allMatch) continue;
+
+    const score = words.reduce((sum, word) =>
+      sum + (fields.some(field => field.startsWith(word)) ? 1 : 0), 0
+    );
+    matches.push({ r, score });
+  }
+
+  matches.sort((a, b) =>
+    b.score - a.score || ((a.r[6] || 9999) - (b.r[6] || 9999))
+  );
+  return matches;
+}
+
+function appendPersonSearchResult(container, row, onSelect) {
+  const [id, sex, given, patronymic, surname, maiden, birthYear] = row;
+  const name = formatName(given, patronymic, surname, maiden) || `Асоба #${id}`;
+  const idLabel = NU[id] != null ? `#${NU[id]}` : `~${id}`;
+  const details = [birthYear ? `н. ${birthYear}` : '', sex === 1 ? 'муж.' : 'жан.', idLabel]
+    .filter(Boolean)
+    .join(' · ');
+  const result = document.createElement('div');
+  result.className = 'search-result';
+  result.innerHTML = `
+    <div class="search-result-name">${name}</div>
+    <div class="search-result-sub">${details}</div>
+  `.trim();
+  result.addEventListener('click', () => onSelect(id));
+  container.appendChild(result);
+}
 
 function initSearch() {
   const input   = document.getElementById('search-input');
@@ -1100,20 +1410,11 @@ function initSearch() {
     const nextMatches = matches.slice(renderedCount, renderedCount + pageSize);
 
     nextMatches.forEach(({ r }) => {
-      const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
-      const name = formatName(given, patronymic, surname, maiden) || `Асоба #${id}`;
-      const div  = document.createElement('div');
-      div.className = 'search-result';
-      div.innerHTML = `
-        <div class="search-result-name">${name}</div>
-        <div class="search-result-sub">${surname || ''}${birthYear ? ' н.' + birthYear : ''} ${sex === 1 ? 'муж.' : 'жан.'}</div>
-      `.trim();
-      div.addEventListener('click', () => {
+      appendPersonSearchResult(results, r, id => {
         results.style.display = 'none';
         input.value = '';
         navigate(id);
       });
-      results.appendChild(div);
     });
 
     renderedCount += nextMatches.length;
@@ -1125,33 +1426,7 @@ function initSearch() {
     if (raw.length < 2) { results.style.display = 'none'; return; }
 
     debounce = setTimeout(() => {
-      // Split query into words; every word must match somewhere in the name fields
-      const words = raw.split(/\s+/).filter(Boolean);
-
-      matches = [];
-      for (const r of SI) {
-        const [id, sex, given, patronymic, surname, maiden, birthYear] = r;
-        const fields = [given, patronymic, surname, maiden]
-          .filter(Boolean)
-          .map(s => s.toLowerCase());
-
-        // Every query word must prefix-match at least one field token
-        const allMatch = words.every(w =>
-          fields.some(f => f.startsWith(w) || f.includes(w))
-        );
-        if (!allMatch) continue;
-
-        // Score: prefer matches where more fields start with a query word
-        const score = words.reduce((s, w) =>
-          s + (fields.some(f => f.startsWith(w)) ? 1 : 0), 0
-        );
-        matches.push({ r, score });
-      }
-
-      // Sort: higher score first, then by birth year
-      matches.sort((a, b) =>
-        b.score - a.score || ((a.r[6] || 9999) - (b.r[6] || 9999))
-      );
+      matches = findPersonMatches(raw);
 
       results.innerHTML = '';
       if (!matches.length) { results.style.display = 'none'; return; }
@@ -1171,6 +1446,110 @@ function initSearch() {
     if (!input.contains(e.target) && !results.contains(e.target)) {
       results.style.display = 'none';
     }
+  });
+}
+
+function initCommonAncestorUI() {
+  const overlay = document.getElementById('common-ancestor-overlay');
+  const closeButton = document.getElementById('common-ancestor-close');
+  const buildButton = document.getElementById('common-ancestor-build');
+  const status = document.getElementById('common-ancestor-status');
+  const inputs = [
+    document.getElementById('common-person-1'),
+    document.getElementById('common-person-2'),
+  ];
+  const resultLists = [
+    document.getElementById('common-results-1'),
+    document.getElementById('common-results-2'),
+  ];
+
+  function updateBuildState() {
+    const samePerson = commonAncestorSelection[0] && commonAncestorSelection[1] &&
+      commonAncestorSelection[0].id === commonAncestorSelection[1].id;
+    buildButton.disabled = !commonAncestorSelection[0] || !commonAncestorSelection[1] || samePerson;
+    status.textContent = samePerson ? 'Выберыце дзвюх розных асоб.' : '';
+  }
+
+  function closeDialog() {
+    overlay.style.display = 'none';
+    resultLists.forEach(results => { results.style.display = 'none'; });
+  }
+
+  function setupPicker(index) {
+    const input = inputs[index];
+    const results = resultLists[index];
+    const pageSize = 20;
+    let debounce = null;
+    let matches = [];
+    let renderedCount = 0;
+
+    function appendMatches() {
+      const nextMatches = matches.slice(renderedCount, renderedCount + pageSize);
+      nextMatches.forEach(({ r }) => {
+        appendPersonSearchResult(results, r, id => {
+          const person = buildPerson(id);
+          if (!person) return;
+          commonAncestorSelection[index] = person;
+          const name = formatName(person.given, person.patronymic, person.surname, person.maiden) || `Асоба #${person.id}`;
+          const idLabel = person.num != null ? `#${person.num}` : `~${person.id}`;
+          input.value = `${name} · ${idLabel}`;
+          results.style.display = 'none';
+          updateBuildState();
+        });
+      });
+      renderedCount += nextMatches.length;
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      commonAncestorSelection[index] = null;
+      updateBuildState();
+      const raw = input.value.trim().toLowerCase();
+      if (raw.length < 2) {
+        results.style.display = 'none';
+        return;
+      }
+
+      debounce = setTimeout(() => {
+        matches = findPersonMatches(raw);
+        results.innerHTML = '';
+        renderedCount = 0;
+        results.scrollTop = 0;
+        if (!matches.length) {
+          results.style.display = 'none';
+          return;
+        }
+        appendMatches();
+        results.style.display = 'block';
+      }, 200);
+    });
+
+    results.addEventListener('scroll', () => {
+      const nearBottom = results.scrollTop + results.clientHeight >= results.scrollHeight - 40;
+      if (nearBottom && renderedCount < matches.length) appendMatches();
+    });
+  }
+
+  setupPicker(0);
+  setupPicker(1);
+  updateBuildState();
+
+  document.getElementById('btn-common-ancestors').addEventListener('click', () => {
+    status.textContent = '';
+    overlay.style.display = 'flex';
+  });
+  closeButton.addEventListener('click', closeDialog);
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay) closeDialog();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && overlay.style.display !== 'none') closeDialog();
+  });
+  buildButton.addEventListener('click', () => {
+    if (buildButton.disabled) return;
+    const [firstPerson, secondPerson] = commonAncestorSelection;
+    closeDialog();
+    renderCommonAncestorTree(firstPerson.id, secondPerson.id);
   });
 }
 
