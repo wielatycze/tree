@@ -62,12 +62,18 @@ describe('UI layout', function() {
 
   it('uses tree selection for common-ancestor comparisons', function() {
     const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+    const treeStage = cssRule(css, '#tree-stage');
+    const comparisonSummary = cssRule(css, '#comparison-summary');
 
     assert.doesNotMatch(html, /id="btn-common-ancestors"/);
     assert.doesNotMatch(html, /id="common-ancestor-overlay"/);
     assert.match(html, /id="context-compare"/);
     assert.match(html, /id="comparison-pick-status"/);
     assert.match(html, /id="comparison-pick-clear"[^>]*aria-label="Скасаваць выбар"/);
+    assert.match(html, /id="tree-stage"[\s\S]*id="comparison-summary"[\s\S]*id="canvas-wrap"/);
+    assert.match(treeStage, /display:\s*flex/);
+    assert.match(comparisonSummary, /width:\s*280px/);
   });
 
   it('links to a separate, incrementally rendered people directory', function() {

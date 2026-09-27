@@ -322,6 +322,12 @@ body {
 .search-result-sub  { font-size: 11px; color: #888; margin-top: 1px; }
 
 /* ── Canvas ───────────────────────────────────────────────── */
+#tree-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 #canvas-wrap {
   flex: 1;
   min-height: 0;
@@ -618,6 +624,134 @@ svg.connectors {
 .node.is-common-ancestor {
   border: 2px solid #7557a6;
   background: #f7f3fc;
+}
+
+#comparison-summary {
+  flex: 0 0 280px;
+  width: 280px;
+  overflow-y: auto;
+  padding: 16px;
+  background: #fbfbfa;
+  border-right: 1px solid #d8d5d0;
+}
+
+.comparison-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.comparison-summary-title {
+  color: #3e3a36;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.comparison-summary-toggle {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #c9c5bf;
+  border-radius: 4px;
+  background: #fff;
+  color: #625d57;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.comparison-summary-toggle:hover,
+.comparison-summary-toggle:focus-visible {
+  border-color: #8d8780;
+  color: #24211f;
+  outline: none;
+}
+
+#comparison-summary.is-collapsed {
+  flex-basis: 44px;
+  width: 44px;
+  padding: 10px 7px;
+  overflow: hidden;
+}
+
+#comparison-summary.is-collapsed .comparison-summary-title,
+#comparison-summary.is-collapsed .comparison-summary-content {
+  display: none;
+}
+
+#comparison-summary.is-collapsed .comparison-summary-header {
+  justify-content: center;
+}
+
+.common-ancestor-summary {
+  padding: 14px 0;
+  border-bottom: 1px solid #e2dfda;
+}
+
+.common-ancestor-summary:last-child { border-bottom: 0; }
+
+.common-ancestor-summary-name {
+  color: #24211f;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.common-ancestor-relation {
+  margin-top: 9px;
+  padding-left: 8px;
+  border-left: 3px solid #4a7fc1;
+}
+
+.common-ancestor-relation.is-second { border-left-color: #a14f72; }
+
+.common-ancestor-relation-person {
+  color: #77716b;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.common-ancestor-relation-name {
+  margin-top: 1px;
+  color: #3f638c;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.common-ancestor-relation.is-second .common-ancestor-relation-name {
+  color: #8b4962;
+}
+
+.common-ancestor-relation-generation {
+  margin-top: 1px;
+  color: #77716b;
+  font-size: 10px;
+}
+
+@media (max-width: 700px) {
+  #tree-stage { flex-direction: column; }
+
+  #comparison-summary {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 180px;
+    padding: 10px 14px;
+    border-right: 0;
+    border-bottom: 1px solid #d8d5d0;
+  }
+
+  #comparison-summary.is-collapsed {
+    flex-basis: auto;
+    width: 100%;
+    max-height: 42px;
+    padding: 6px 10px;
+  }
+
+  #comparison-summary.is-collapsed .comparison-summary-header {
+    justify-content: flex-end;
+  }
 }
 
 .tree-empty-state {

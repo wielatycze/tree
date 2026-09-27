@@ -52,6 +52,7 @@ let currentMode = 'descendants';
 let descendantGenerationLimit = null;
 let currentComparison = null;
 let contextComparisonPerson = null;
+let comparisonSummaryCollapsed = false;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 const SEARCH_COLLATOR = new Intl.Collator(['be', 'ru'], { sensitivity: 'base' });
@@ -674,6 +675,9 @@ function renderTree(tree) {
 
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
+  const comparisonSummary = document.getElementById('comparison-summary');
+  comparisonSummary.innerHTML = '';
+  comparisonSummary.style.display = 'none';
 
   const { ancestorTree, families } = tree;
   const visualFamilies = currentMode === 'descendants'
@@ -1204,6 +1208,78 @@ function drawComparisonCouple(svg, firstParent, secondParent, couple) {
   };
 }
 
+function formatAncestorKinship(generations, sex) {
+  if (generations === 0) return 'Тая ж асоба';
+  if (generations === 1) return sex === 1 ? 'Бацька' : sex === 2 ? 'Маці' : 'Продак';
+  if (generations === 2) return sex === 1 ? 'Дзед' : sex === 2 ? 'Бабуля' : 'Продак';
+  const prefix = 'пра'.repeat(generations - 2);
+  const kinship = sex === 1 ? `${prefix}дзед` : sex === 2 ? `${prefix}бабуля` : 'продак';
+  return kinship[0].toUpperCase() + kinship.slice(1);
+}
+
+function renderCommonAncestorSummary(graph, firstName, secondName) {
+  const summary = document.getElementById('comparison-summary');
+  const generationDistances = CommonAncestorLayout.commonAncestorGenerationDistances(graph);
+  summary.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'comparison-summary-header';
+  header.appendChild(createTextElement('h2', 'comparison-summary-title', 'Агульныя продкі'));
+  const toggle = createTextElement('button', 'comparison-summary-toggle', '‹');
+  toggle.type = 'button';
+  header.appendChild(toggle);
+  summary.appendChild(header);
+
+  const content = document.createElement('div');
+  content.className = 'comparison-summary-content';
+
+  graph.commonAncestorIds.forEach(ancestorId => {
+    const person = buildPerson(Number(ancestorId));
+    if (!person) return;
+    const ancestorName = formatName(person.given, person.patronymic, person.surname, person.maiden)
+      || `Асоба #${person.id}`;
+    const distances = generationDistances[ancestorId];
+    const item = document.createElement('section');
+    item.className = 'common-ancestor-summary';
+    item.appendChild(createTextElement('h3', 'common-ancestor-summary-name', ancestorName));
+
+    [[firstName, distances[0], 'is-first'], [secondName, distances[1], 'is-second']]
+      .forEach(([personName, distance, sourceClass]) => {
+        const relation = document.createElement('div');
+        relation.className = `common-ancestor-relation ${sourceClass}`;
+        relation.appendChild(createTextElement(
+          'div', 'common-ancestor-relation-person', personName
+        ));
+        relation.appendChild(createTextElement(
+          'div', 'common-ancestor-relation-name', formatAncestorKinship(distance, person.sex)
+        ));
+        if (distance > 0) {
+          relation.appendChild(createTextElement(
+            'div', 'common-ancestor-relation-generation', `${distance}-е пакаленне`
+          ));
+        }
+        item.appendChild(relation);
+      });
+
+    content.appendChild(item);
+  });
+
+  summary.appendChild(content);
+  const syncCollapsedState = () => {
+    summary.classList.toggle('is-collapsed', comparisonSummaryCollapsed);
+    toggle.textContent = comparisonSummaryCollapsed ? '›' : '‹';
+    toggle.title = comparisonSummaryCollapsed ? 'Паказаць панэль' : 'Схаваць панэль';
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.setAttribute('aria-expanded', comparisonSummaryCollapsed ? 'false' : 'true');
+  };
+  toggle.addEventListener('click', () => {
+    comparisonSummaryCollapsed = !comparisonSummaryCollapsed;
+    syncCollapsedState();
+  });
+  syncCollapsedState();
+  summary.style.display = 'block';
+}
+
 function renderCommonAncestorTree(firstId, secondId) {
   const firstPerson = buildPerson(firstId);
   const secondPerson = buildPerson(secondId);
@@ -1213,7 +1289,10 @@ function renderCommonAncestorTree(firstId, secondId) {
   const couples = CommonAncestorLayout.findDisplayedCouples(graph, PA);
   const canvas = document.getElementById('canvas');
   const wrap = document.getElementById('canvas-wrap');
+  const comparisonSummary = document.getElementById('comparison-summary');
   canvas.innerHTML = '';
+  comparisonSummary.innerHTML = '';
+  comparisonSummary.style.display = 'none';
   currentComparison = [firstPerson.id, secondPerson.id];
   currentRootId = firstPerson.id;
   syncComparisonUrl(firstPerson.id, secondPerson.id);
@@ -1249,6 +1328,8 @@ function renderCommonAncestorTree(firstId, secondId) {
     wrap.scrollTop = 0;
     return;
   }
+
+  renderCommonAncestorSummary(graph, firstName, secondName);
 
   const maxRank = Math.max(...Object.values(graph.ranks));
   const comparisonGap = 64;

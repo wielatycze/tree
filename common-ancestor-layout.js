@@ -125,6 +125,38 @@
     };
   }
 
+  function commonAncestorGenerationDistances(graph) {
+    const edgesByChild = new Map();
+    graph.edges.forEach(edge => {
+      if (!edgesByChild.has(edge.childId)) edgesByChild.set(edge.childId, []);
+      edgesByChild.get(edge.childId).push(edge);
+    });
+
+    const distancesBySource = graph.selectedIds.map((selectedId, sourceIndex) => {
+      const distances = new Map([[selectedId, 0]]);
+      const queue = [selectedId];
+
+      for (let cursor = 0; cursor < queue.length; cursor += 1) {
+        const childId = queue[cursor];
+        const nextDistance = distances.get(childId) + 1;
+        (edgesByChild.get(childId) || []).forEach(edge => {
+          if (!edge.sources.includes(sourceIndex)) return;
+          const previousDistance = distances.get(edge.parentId);
+          if (previousDistance != null && previousDistance <= nextDistance) return;
+          distances.set(edge.parentId, nextDistance);
+          queue.push(edge.parentId);
+        });
+      }
+
+      return distances;
+    });
+
+    return Object.fromEntries(graph.commonAncestorIds.map(ancestorId => [
+      ancestorId,
+      distancesBySource.map(distances => distances.get(ancestorId) ?? null),
+    ]));
+  }
+
   function findDisplayedCouples(graph, parentsByChild) {
     const edgeByKey = new Map(graph.edges.map(edge => [
       `${edge.childId}:${edge.parentId}`,
@@ -248,6 +280,7 @@
     collectLineage,
     nearestCommonAncestors,
     buildMinimalGraph,
+    commonAncestorGenerationDistances,
     findDisplayedCouples,
     layoutSourceTrees,
   };

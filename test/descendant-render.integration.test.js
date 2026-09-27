@@ -240,7 +240,9 @@ async function renderTreeFixture(
     'canvas',
     'crumb',
     'toolbar',
+    'tree-stage',
     'canvas-wrap',
+    'comparison-summary',
     'detail-name',
     'detail-info',
     'detail-nav',
@@ -366,6 +368,7 @@ async function renderTreeFixture(
     findPersonMatches: context.findPersonMatches,
     createNode: context.createNode,
     appendPersonSearchResult: context.appendPersonSearchResult,
+    formatAncestorKinship: context.formatAncestorKinship,
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
     contextCompare: elementById('context-compare'),
@@ -374,6 +377,7 @@ async function renderTreeFixture(
     comparisonPickStatus: elementById('comparison-pick-status'),
     comparisonPickName: elementById('comparison-pick-name'),
     comparisonPickClear: elementById('comparison-pick-clear'),
+    comparisonSummary: elementById('comparison-summary'),
     renderCommonAncestorTree: context.renderCommonAncestorTree,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
@@ -404,6 +408,12 @@ describe('Descendant mode real render', function() {
     assert.deepStrictEqual(comparisonIds, ['1', '1551', '463', '464']);
     assert.deepStrictEqual(commonIds, ['1551', '463']);
     assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
+    assert.strictEqual(
+      fixture.comparisonSummary.children[1].children.filter(child =>
+        child.className === 'common-ancestor-summary'
+      ).length,
+      2
+    );
     const coupleLines = comparisonSvg.children.filter(connector =>
       connector.attributes['data-couple-id'] != null
     );
@@ -600,6 +610,7 @@ describe('Descendant mode real render', function() {
     assert.ok(emptyState, 'expected a no-common-ancestors result');
     assert.strictEqual(emptyState.textContent, 'Агульных продкаў не знойдзена');
     assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 0');
+    assert.strictEqual(fixture.comparisonSummary.style.display, 'none');
   });
 
   it('draws a selected great-great-grandparent directly above the descendant path', async function() {
@@ -616,9 +627,35 @@ describe('Descendant mode real render', function() {
     const centers = comparisonNodes.map(node =>
       numberFromCss(node.style.cssText, 'left') + NODE_W / 2
     );
+    const summaryHeader = fixture.comparisonSummary.children[0];
+    const summaryItem = fixture.comparisonSummary.children[1].children[0];
+    const firstRelationship = summaryItem.children[1];
+    const secondRelationship = summaryItem.children[2];
+    const summaryToggle = summaryHeader.children[1];
 
     assert.ok(centers.every(center => center === centers[0]));
     assert.ok(relationshipPaths.every(path => path.attributes['data-routed'] === 'straight'));
+    assert.strictEqual(fixture.comparisonSummary.style.display, 'block');
+    assert.strictEqual(summaryHeader.children[0].textContent, 'Агульныя продкі');
+    assert.strictEqual(firstRelationship.children[1].textContent, 'Прапрадзед');
+    assert.strictEqual(firstRelationship.children[2].textContent, '4-е пакаленне');
+    assert.strictEqual(secondRelationship.children[1].textContent, 'Тая ж асоба');
+    assert.strictEqual(secondRelationship.children.length, 2);
+    assert.strictEqual(summaryToggle.getAttribute('aria-expanded'), 'true');
+    summaryToggle.dispatchEvent({ type: 'click' });
+    assert.ok(fixture.comparisonSummary.className.includes('is-collapsed'));
+    assert.strictEqual(summaryToggle.getAttribute('aria-expanded'), 'false');
+    summaryToggle.dispatchEvent({ type: 'click' });
+    assert.ok(!fixture.comparisonSummary.className.includes('is-collapsed'));
+    assert.strictEqual(fixture.formatAncestorKinship(1, 1), 'Бацька');
+    assert.strictEqual(fixture.formatAncestorKinship(1, 2), 'Маці');
+    assert.strictEqual(fixture.formatAncestorKinship(2, 1), 'Дзед');
+    assert.strictEqual(fixture.formatAncestorKinship(2, 2), 'Бабуля');
+    assert.strictEqual(fixture.formatAncestorKinship(3, 1), 'Прадзед');
+    assert.strictEqual(fixture.formatAncestorKinship(5, 2), 'Прапрапрабабуля');
+    assert.ok(!fixture.canvas.children.some(child =>
+      child.className && child.className.includes('comparison-generation')
+    ));
   });
 
   it('shows the number of people currently rendered in the tree', async function() {

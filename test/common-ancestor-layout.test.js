@@ -119,4 +119,58 @@ describe('CommonAncestorLayout', function() {
       assert.strictEqual(layout.width, 152);
     });
   });
+
+  it('calculates each common ancestor generation from both selected people', function() {
+    const parents = {};
+    for (let generation = 0; generation < 7; generation += 1) {
+      parents[generation === 0 ? 'a' : `a-${generation}`] = [
+        generation === 6 ? 'common' : `a-${generation + 1}`,
+        null,
+      ];
+    }
+    for (let generation = 0; generation < 4; generation += 1) {
+      parents[generation === 0 ? 'b' : `b-${generation}`] = [
+        generation === 3 ? 'common' : `b-${generation + 1}`,
+        null,
+      ];
+    }
+
+    const graph = CommonAncestorLayout.buildMinimalGraph('a', 'b', parents);
+
+    assert.deepStrictEqual(
+      CommonAncestorLayout.commonAncestorGenerationDistances(graph),
+      { common: [7, 4] }
+    );
+  });
+
+  it('uses zero internally when a selected person is the common ancestor', function() {
+    const parents = {
+      child: ['parent', null],
+      parent: ['grandparent', null],
+      grandparent: ['great-grandparent', null],
+    };
+    const graph = CommonAncestorLayout.buildMinimalGraph('child', 'great-grandparent', parents);
+
+    assert.deepStrictEqual(
+      CommonAncestorLayout.commonAncestorGenerationDistances(graph),
+      { 'great-grandparent': [3, 0] }
+    );
+  });
+
+  it('uses the shortest distance when an ancestor has multiple paths', function() {
+    const parents = {
+      a: ['short-parent', 'long-parent'],
+      'short-parent': ['common', null],
+      'long-parent': ['long-grandparent', null],
+      'long-grandparent': ['common', null],
+      b: ['b-parent', null],
+      'b-parent': ['common', null],
+    };
+    const graph = CommonAncestorLayout.buildMinimalGraph('a', 'b', parents);
+
+    assert.deepStrictEqual(
+      CommonAncestorLayout.commonAncestorGenerationDistances(graph),
+      { common: [2, 2] }
+    );
+  });
 });
