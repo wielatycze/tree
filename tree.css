@@ -626,6 +626,11 @@ svg.connectors {
   background: #f7f3fc;
 }
 
+.node.is-pedigree-collapse {
+  border-color: #88789c;
+  box-shadow: 0 0 0 1px rgba(117, 87, 166, 0.16);
+}
+
 #comparison-summary {
   flex: 0 0 280px;
   width: 280px;
@@ -648,7 +653,14 @@ svg.connectors {
   font-weight: 700;
 }
 
-.comparison-summary-toggle {
+.comparison-summary-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.comparison-summary-toggle,
+.comparison-summary-close {
   flex: 0 0 28px;
   width: 28px;
   height: 28px;
@@ -663,7 +675,9 @@ svg.connectors {
 }
 
 .comparison-summary-toggle:hover,
-.comparison-summary-toggle:focus-visible {
+.comparison-summary-toggle:focus-visible,
+.comparison-summary-close:hover,
+.comparison-summary-close:focus-visible {
   border-color: #8d8780;
   color: #24211f;
   outline: none;
@@ -683,6 +697,10 @@ svg.connectors {
 
 #comparison-summary.is-collapsed .comparison-summary-header {
   justify-content: center;
+}
+
+#comparison-summary.is-collapsed .comparison-summary-controls {
+  flex-direction: column;
 }
 
 .common-ancestor-summary {
@@ -751,6 +769,11 @@ svg.connectors {
 
   #comparison-summary.is-collapsed .comparison-summary-header {
     justify-content: flex-end;
+  }
+
+
+  #comparison-summary.is-collapsed .comparison-summary-controls {
+    flex-direction: row;
   }
 }
 

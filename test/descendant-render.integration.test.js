@@ -631,7 +631,9 @@ describe('Descendant mode real render', function() {
     const summaryItem = fixture.comparisonSummary.children[1].children[0];
     const firstRelationship = summaryItem.children[1];
     const secondRelationship = summaryItem.children[2];
-    const summaryToggle = summaryHeader.children[1];
+    const summaryControls = summaryHeader.children[1];
+    const summaryToggle = summaryControls.children[0];
+    const summaryClose = summaryControls.children[1];
 
     assert.ok(centers.every(center => center === centers[0]));
     assert.ok(relationshipPaths.every(path => path.attributes['data-routed'] === 'straight'));
@@ -647,6 +649,7 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(summaryToggle.getAttribute('aria-expanded'), 'false');
     summaryToggle.dispatchEvent({ type: 'click' });
     assert.ok(!fixture.comparisonSummary.className.includes('is-collapsed'));
+    assert.strictEqual(summaryClose.getAttribute('aria-label'), 'Закрыць параўнанне');
     assert.strictEqual(fixture.formatAncestorKinship(1, 1), 'Бацька');
     assert.strictEqual(fixture.formatAncestorKinship(1, 2), 'Маці');
     assert.strictEqual(fixture.formatAncestorKinship(2, 1), 'Дзед');
@@ -656,6 +659,22 @@ describe('Descendant mode real render', function() {
     assert.ok(!fixture.canvas.children.some(child =>
       child.className && child.className.includes('comparison-generation')
     ));
+  });
+
+  it('closes comparison mode and restores the previously displayed tree', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 1);
+
+    fixture.renderCommonAncestorTree(1, 3372);
+    const summaryHeader = fixture.comparisonSummary.children[0];
+    const closeButton = summaryHeader.children[1].children[1];
+    closeButton.dispatchEvent({ type: 'click' });
+    const restoredRoot = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+
+    assert.strictEqual(String(restoredRoot.dataset.id), '11083');
+    assert.strictEqual(fixture.comparisonSummary.style.display, 'none');
+    assert.ok(!fixture.location.search.includes('compare='));
   });
 
   it('shows the number of people currently rendered in the tree', async function() {
@@ -785,6 +804,14 @@ describe('Descendant mode real render', function() {
     assert.match(fixture.crumb.textContent, /↔/);
     assert.strictEqual(fixture.location.search, '?compare=~16591,~17605');
     assert.strictEqual(fixture.location.hash, '');
+
+    const closeButton = fixture.comparisonSummary.children[0].children[1].children[1];
+    closeButton.dispatchEvent({ type: 'click' });
+    const restoredRoot = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    assert.strictEqual(String(restoredRoot.dataset.id), '16591');
+    assert.ok(!fixture.location.search.includes('compare='));
   });
 
   it('loads every search match incrementally as the results are scrolled', async function() {
@@ -1473,6 +1500,49 @@ describe('Descendant mode real render', function() {
         `expected pedigree-collapse ancestor ${id} to have a visible child connector`
       );
     }
+  });
+
+  it('anchors #16591 collapsed ancestors over real children with an explicit shared fork', async function() {
+    const { nodes, lines, canvas } = await renderTreeFixture(16591, 'descendants', 1);
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    const cx = id => byId.get(id).left + NODE_W / 2;
+
+    assert.strictEqual(cx('1458'), cx('1524'), 'expected #217 above its real child #221');
+    assert.notStrictEqual(cx('1458'), cx('2099'), 'expected #217 clear of unrelated #514');
+    assert.strictEqual(cx('2098'), cx('2099'), 'expected #510 above its real child #514');
+    assert.notStrictEqual(cx('2098'), cx('2876'), 'expected #510 clear of unrelated #550');
+    assert.ok(byId.get('1458').className.includes('is-pedigree-collapse'));
+
+    const sharedPaths = lines.filter(line =>
+      line.attributes.class === 'pedigree-collapse-path' &&
+      line.attributes['data-shared-ancestor-id'] === '1458'
+    );
+    const sharedBar = sharedPaths.find(line =>
+      lineNumber(line, 'y1') === lineNumber(line, 'y2')
+    );
+    assert.ok(sharedBar, 'expected one visible fork joining both real #217 child branches');
+    assert.strictEqual(
+      Math.min(lineNumber(sharedBar, 'x1'), lineNumber(sharedBar, 'x2')),
+      Math.min(cx('1524'), cx('1147'))
+    );
+    assert.strictEqual(
+      Math.max(lineNumber(sharedBar, 'x1'), lineNumber(sharedBar, 'x2')),
+      Math.max(cx('1524'), cx('1147'))
+    );
+
+    const svg = canvas.children.find(child => child.tag === 'svg');
+    const sharedSegments = svg.children.filter(line =>
+      line.attributes['data-shared-ancestor-id'] === '1458'
+    );
+    const lastHaloIndex = Math.max(...sharedSegments
+      .map((line, index) => line.attributes.class === 'pedigree-collapse-halo' ? index : -1));
+    const firstPathIndex = sharedSegments.findIndex(line =>
+      line.attributes.class === 'pedigree-collapse-path'
+    );
+    assert.ok(
+      lastHaloIndex < firstPathIndex,
+      'expected every halo below every foreground segment so real fork junctions stay continuous'
+    );
   });
 
   it('routes graph child branches below the parent couple bar', async function() {
