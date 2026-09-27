@@ -11,13 +11,25 @@
     return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
-  function formatDate(date) {
-    if (!date || !date[0]) return '';
-    const [year, month, day] = date;
+  function formatDateValue(year, month, day) {
+    if (!year) return '';
     if (!month) return String(year);
     const paddedMonth = String(month).padStart(2, '0');
     if (!day) return `??.${paddedMonth}.${year}`;
     return `${String(day).padStart(2, '0')}.${paddedMonth}.${year}`;
+  }
+
+  function formatDate(date) {
+    if (!date || !date[0]) return '';
+    const [year, month, day, type = 0, year2, month2, day2] = date;
+    const value = formatDateValue(year, month, day);
+    if (type === 1) return `каля ${value}`;
+    if (type === 2) return `да ${value}`;
+    if (type === 3) return `пасля ${value}`;
+    if (type === 4 && year2) {
+      return `${value} – ${formatDateValue(year2, month2, day2)}`;
+    }
+    return value;
   }
 
   function dateSortValue(date) {

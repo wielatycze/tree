@@ -17,6 +17,15 @@ def save(name, obj):
     size = os.path.getsize(path)
     print(f'  {name}.json  {size // 1024} KB')
 
+def pack_date(year, month, day, date_type=0, year2=None, month2=None, day2=None):
+    """Compact date tuple: [y,m,d], plus type and an optional second date."""
+    first = [year, month, day]
+    if not date_type:
+        return first
+    if date_type == 4:
+        return first + [date_type, year2, month2, day2]
+    return first + [date_type]
+
 print(f'Opening {DB_PATH}')
 conn = sqlite3.connect(DB_PATH)
 cur  = conn.cursor()
@@ -82,8 +91,12 @@ ed_rows = cur.fetchall()
 event_roles = {}
 for pid, eid, er in ed_rows:
     event_roles.setdefault(eid, {})[er] = pid
-cur.execute('SELECT rec_id,y,m,d FROM ValuesDates WHERE rec_table=7 AND f_id=29')
-edates = {r[0]: [r[1], r[2], r[3]] for r in cur.fetchall()}
+cur.execute('''
+    SELECT rec_id,y,m,d,type,y2,m2,d2
+    FROM ValuesDates
+    WHERE rec_table=7 AND f_id=29
+''')
+edates = {r[0]: pack_date(*r[1:]) for r in cur.fetchall()}
 
 # Per-couple children: keyed by (father_id, mother_id)
 cur.execute('''
@@ -140,29 +153,29 @@ nums = {r[0]: r[1] for r in cur.fetchall()}
 save('nums', nums)
 
 # ── Birth dates ───────────────────────────────────────────────
-# {person_id: [y, m, d]}
+# {person_id: [y, m, d, optional_type, optional_y2, optional_m2, optional_d2]}
 print('Exporting births...')
 cur.execute('''
-    SELECT ed.p_id, vd.y, vd.m, vd.d
+    SELECT ed.p_id, vd.y, vd.m, vd.d, vd.type, vd.y2, vd.m2, vd.d2
     FROM EventDetails ed
     JOIN Events e ON e.id=ed.e_id AND e.et_id=1
     JOIN ValuesDates vd ON vd.rec_id=e.id AND vd.rec_table=7 AND vd.f_id=29
     WHERE ed.er_id=1
 ''')
-births = {r[0]: [r[1], r[2], r[3]] for r in cur.fetchall()}
+births = {r[0]: pack_date(*r[1:]) for r in cur.fetchall()}
 save('births', births)
 
 # ── Death dates ───────────────────────────────────────────────
-# {person_id: [y, m, d]}
+# {person_id: [y, m, d, optional_type, optional_y2, optional_m2, optional_d2]}
 print('Exporting deaths...')
 cur.execute('''
-    SELECT ed.p_id, vd.y, vd.m, vd.d
+    SELECT ed.p_id, vd.y, vd.m, vd.d, vd.type, vd.y2, vd.m2, vd.d2
     FROM EventDetails ed
     JOIN Events e ON e.id=ed.e_id AND e.et_id=2
     JOIN ValuesDates vd ON vd.rec_id=e.id AND vd.rec_table=7 AND vd.f_id=29
     WHERE ed.er_id=4
 ''')
-deaths = {r[0]: [r[1], r[2], r[3]] for r in cur.fetchall()}
+deaths = {r[0]: pack_date(*r[1:]) for r in cur.fetchall()}
 save('deaths', deaths)
 
 conn.close()

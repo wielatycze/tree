@@ -1,110 +1,91 @@
-# Велятичи Family Tree
+# Вяляцічы і воласць
 
-Interactive family tree visualizer for the Veliatychi genealogy database, hosted on GitHub Pages.
+Static genealogy browser for the Veliatychi database. It is designed for GitHub Pages and has no production dependencies or application server.
 
-## Live site
+## Pages
 
-`https://<your-username>.github.io/<repo-name>/`
+- `index.html` renders ancestor, descendant, and common-ancestor trees.
+- `people.html` renders the searchable and sortable people directory in incremental DOM batches.
 
----
+Both pages fetch generated JSON from `data/`. Person URLs use a public display ID when one exists and `~<database-id>` otherwise.
 
-## Setup (one-time)
+Examples:
 
-### 1. Create the repo
+```text
+index.html#494
+index.html#~16591
+index.html?mode=ancestors#494
+index.html?compare=~16591,~17605
+people.html
+```
+
+Descendants mode is the default and is intentionally omitted from its canonical URL.
+
+## Development
+
+Requirements:
+
+- Node.js 22.12 or newer for tests
+- Python 3 for exporting SQLite data
+- A static HTTP server for local browser testing; opening the HTML directly will not allow JSON requests in most browsers
+
+Install and test:
 
 ```bash
-git init veliatychi
-cd veliatychi
-# copy all files here
-git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/<you>/<repo>.git
-git push -u origin main
+npm ci
+npm test
 ```
 
-### 2. Put your database in `data/`
+Serve the repository root with any static server, then open `index.html` or `people.html`. For example:
 
 ```bash
-cp /path/to/Велятичи_SQLite3.txt data/
+python -m http.server 8000
 ```
 
-### 3. Generate the JSON files locally (first time)
+## Data Export
+
+`data/tree.sqlite3` is the source database. Regenerate browser data with:
 
 ```bash
-python3 export.py
+python export.py
 ```
 
-This creates `data/si.json`, `data/parents.json`, etc.
-
-### 4. Commit everything
+The exporter accepts optional paths:
 
 ```bash
-git add data/
-git commit -m "Add database and initial JSON export"
-git push
+DB_PATH=/path/to/tree.sqlite3 OUT_DIR=/path/to/output python export.py
 ```
 
-### 5. Enable GitHub Pages
+Generated files:
 
-Go to your repo → **Settings** → **Pages** → Source: **Deploy from a branch** → Branch: `main`, folder: `/ (root)`.
+| File | Purpose |
+| --- | --- |
+| `si.json` | Compact person/search records |
+| `parents.json` | Parents keyed by child |
+| `children.json` | Children keyed by parent |
+| `marriages.json` | Spouses, marriage dates, and couple children |
+| `places.json` | Person places |
+| `nums.json` | Public display IDs |
+| `births.json` | Birth dates |
+| `deaths.json` | Death dates |
 
-Your site will be live at `https://<you>.github.io/<repo>/` within a minute.
+Dates use compact arrays. Exact values are `[year, month, day]`; qualified values append a type (`1` approximate, `2` before, `3` after), and type `4` also appends the second `[year, month, day]` for a range.
 
----
+The tree page loads its independent data files concurrently and builds in-memory indexes for person and public-ID lookups. The directory keeps all searchable records in memory but renders only 200 table rows at a time.
 
-## Updating the database
+## Architecture
 
-Just push the new `.txt` file:
+- `tree.js` coordinates data loading, URL state, interaction, and rendering.
+- `descendant-layout.js` contains descendant contour packing and connector-lane logic.
+- `common-ancestor-layout.js` builds and lays out minimal common-ancestor graphs.
+- `tree-layout.js` contains small shared positioning rules.
+- `people-list.js` contains pure row creation, filtering, and sorting logic.
+- `people.js` owns directory-page DOM behavior and incremental rendering.
 
-```bash
-cp /path/to/updated_Велятичи_SQLite3.txt data/Велятичи_SQLite3.txt
-git add data/Велятичи_SQLite3.txt
-git commit -m "Update database"
-git push
-```
+Layout modules and list transformations are kept independent of the DOM and tested directly. `test/descendant-render.integration.test.js` exercises the real generated data against the browser renderer using a lightweight DOM fixture.
 
-The GitHub Action will automatically:
-1. Run `export.py` to regenerate all JSON files
-2. Commit the updated JSONs back to the repo
-3. GitHub Pages re-deploys with fresh data
+## Deployment
 
-Total time from push to live update: **~2 minutes**.
+GitHub Pages can publish the repository root directly. `.github/workflows/test.yml` runs the full suite on pushes and pull requests. `.github/workflows/export.yml` regenerates and commits JSON when the SQLite database or exporter changes.
 
----
-
-## Changing the default person
-
-In `index.html`, find this line near the top of the `<script>`:
-
-```js
-const HOME_ID = 11083;   // ← change to your preferred starting person id
-```
-
----
-
-## File structure
-
-```
-├── index.html              # the visualizer
-├── export.py               # database → JSON exporter
-├── data/
-│   ├── Велятичи_SQLite3.txt  # your database (source of truth)
-│   ├── si.json               # search index (auto-generated)
-│   ├── parents.json          # parent relationships
-│   ├── children.json         # children relationships
-│   ├── marriages.json        # marriage events
-│   ├── places.json           # place names per person
-│   ├── nums.json             # # field values
-│   ├── births.json           # birth dates
-│   └── deaths.json           # death dates
-└── .github/
-    └── workflows/
-        └── export.yml        # auto-export on push
-```
-
-## Notes
-
-- The `.txt` database file is ~45MB — GitHub has a 100MB file size limit, so you're fine.
-  If it ever exceeds 100MB, use [Git LFS](https://git-lfs.github.com/).
-- The JSON files total ~3MB and are what the browser actually loads.
-- Deep-linking works: each person gets a URL like `yoursite.github.io/veliatychi/#11083`.
+The default person is configured as `CONFIG.homeId` near the top of `tree.js`.

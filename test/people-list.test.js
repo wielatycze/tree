@@ -32,6 +32,16 @@ describe('People list', function() {
     return PeopleList.createRows(searchIndex, births, deaths, places, numbers, marriages);
   }
 
+  it('formats qualified and ranged dates', function() {
+    assert.strictEqual(PeopleList.formatDate([1888, 0, 0, 1]), 'каля 1888');
+    assert.strictEqual(PeopleList.formatDate([1888, 0, 0, 2]), 'да 1888');
+    assert.strictEqual(PeopleList.formatDate([1888, 0, 0, 3]), 'пасля 1888');
+    assert.strictEqual(
+      PeopleList.formatDate([1879, 7, 27, 4, 1879, 9, 8]),
+      '27.07.1879 – 08.09.1879'
+    );
+  });
+
   it('builds display values and tree links without requiring a display id', function() {
     const [maria, petr] = rows();
 

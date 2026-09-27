@@ -218,15 +218,26 @@ function getDocumentsUrl(person) {
 
 // ── Data helpers ─────────────────────────────────────────────
 
-/** Format a [year, month, day] date tuple as dd.mm.yyyy */
-function formatDate(d) {
-  if (!d) return '?';
-  const [y, m, dd] = d;
+function formatDateValue(y, m, d) {
   if (!y)  return '?';
   if (!m)  return String(y);
   const pad = n => n ? String(n).padStart(2, '0') : '??';
-  if (!dd) return `??.${pad(m)}.${y}`;
-  return `${pad(dd)}.${pad(m)}.${y}`;
+  if (!d) return `??.${pad(m)}.${y}`;
+  return `${pad(d)}.${pad(m)}.${y}`;
+}
+
+/** Format a compact date tuple, including approximate/before/after/range metadata. */
+function formatDate(date) {
+  if (!date) return '?';
+  const [year, month, day, type = 0, year2, month2, day2] = date;
+  const value = formatDateValue(year, month, day);
+  if (type === 1) return `каля ${value}`;
+  if (type === 2) return `да ${value}`;
+  if (type === 3) return `пасля ${value}`;
+  if (type === 4 && year2) {
+    return `${value} – ${formatDateValue(year2, month2, day2)}`;
+  }
+  return value;
 }
 
 /** Build a display name: Surname (Maiden) Given Patronymic */

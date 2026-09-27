@@ -849,6 +849,17 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(card.children[1].textContent, person.place);
   });
 
+  it('renders exported date qualifiers for #1475', async function() {
+    const fixture = await renderTreeFixture(2589);
+    const rootCard = fixture.canvas.children.find(child =>
+      child.className && child.className.includes('is-root')
+    );
+    const dates = rootCard.children.find(child => child.className === 'node-dates');
+
+    assert.match(dates.textContent, /да 1888$/);
+    assert.deepStrictEqual(Array.from(fixture.buildPerson(2589).death), [1888, null, null, 2]);
+  });
+
   it('uses descendants mode when the URL does not specify a mode', async function() {
     const { nodes, replacedUrls, descendantLimitControl } = await renderTreeFixture(11083, null);
     const root = nodes.find(node => node.className.includes('is-root'));
