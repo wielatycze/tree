@@ -94,4 +94,29 @@ describe('CommonAncestorLayout', function() {
       (layout.xById['b-father'] + layout.xById['b-mother']) / 2
     );
   });
+
+  it('keeps a selected ancestor aligned with its descendant path', function() {
+    const parents = {
+      child: ['parent', null],
+      parent: ['grandparent', null],
+      grandparent: ['great-grandparent', null],
+      'great-grandparent': ['great-great-grandparent', null],
+    };
+
+    [
+      ['child', 'great-great-grandparent'],
+      ['great-great-grandparent', 'child'],
+    ].forEach(([firstId, secondId]) => {
+      const graph = CommonAncestorLayout.buildMinimalGraph(firstId, secondId, parents);
+      const layout = CommonAncestorLayout.layoutSourceTrees(graph, {
+        nodeWidth: 152,
+        siblingGap: 64,
+        sourceGap: 64,
+      });
+      const positions = graph.nodeIds.map(id => layout.xById[id]);
+
+      assert.ok(positions.every(x => x === positions[0]));
+      assert.strictEqual(layout.width, 152);
+    });
+  });
 });

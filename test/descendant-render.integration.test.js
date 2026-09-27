@@ -602,6 +602,25 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 0');
   });
 
+  it('draws a selected great-great-grandparent directly above the descendant path', async function() {
+    const fixture = await renderTreeFixture(1);
+
+    fixture.renderCommonAncestorTree(1, 3372);
+    const comparisonNodes = fixture.canvas.children.filter(child =>
+      child.className && child.className.includes('node')
+    );
+    const comparisonSvg = fixture.canvas.children.find(child => child.tag === 'svg');
+    const relationshipPaths = comparisonSvg.children.filter(path =>
+      path.attributes['data-child-id'] != null
+    );
+    const centers = comparisonNodes.map(node =>
+      numberFromCss(node.style.cssText, 'left') + NODE_W / 2
+    );
+
+    assert.ok(centers.every(center => center === centers[0]));
+    assert.ok(relationshipPaths.every(path => path.attributes['data-routed'] === 'straight'));
+  });
+
   it('shows the number of people currently rendered in the tree', async function() {
     const fixture = await renderTreeFixture(11083, 'descendants', 1);
     const uniquePeople = new Set(fixture.nodes.map(node => node.id)).size;

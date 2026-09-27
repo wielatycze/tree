@@ -212,10 +212,21 @@
       };
     }
 
+    const sourceLayouts = graph.selectedIds.map((selectedId, sourceIndex) => ({
+      selectedId,
+      sourceIndex,
+      layout: layoutOccurrence(buildOccurrence(selectedId, sourceIndex)),
+    }));
+    const activeSourceLayouts = sourceLayouts.filter(source =>
+      !sourceLayouts.some(other =>
+        other.sourceIndex !== source.sourceIndex &&
+        other.layout.positions.some(position => position.id === source.selectedId)
+      )
+    );
+
     const candidatesById = new Map();
     let nextOffset = 0;
-    graph.selectedIds.forEach((selectedId, sourceIndex) => {
-      const layout = layoutOccurrence(buildOccurrence(selectedId, sourceIndex));
+    activeSourceLayouts.forEach(({ layout }) => {
       layout.positions.forEach(position => {
         if (!candidatesById.has(position.id)) candidatesById.set(position.id, []);
         candidatesById.get(position.id).push(position.x + nextOffset);
@@ -229,7 +240,7 @@
     });
     return {
       xById,
-      width: Math.max(0, nextOffset - sourceGap),
+      width: activeSourceLayouts.length ? nextOffset - sourceGap : 0,
     };
   }
 
