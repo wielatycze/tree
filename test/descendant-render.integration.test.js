@@ -71,7 +71,12 @@ class FakeElement {
   }
 
   get offsetHeight() {
-    return this.measuredNodeHeights[this.dataset.id] || this._offsetHeight;
+    const measurement = this.measuredNodeHeights[this.dataset.id];
+    if (measurement && typeof measurement === 'object') {
+      const hasRelationship = this.children.some(child => child.className === 'node-relation');
+      return hasRelationship ? measurement.withRelationship : measurement.base;
+    }
+    return measurement || this._offsetHeight;
   }
 
   set offsetHeight(value) {
@@ -255,8 +260,9 @@ async function renderTreeFixture(
     'ancestors-only-toggle',
     'descendant-limit-control',
     'descendant-limit-options',
-    'generation-guides-control',
+    'tree-view-options-control',
     'generation-guides-toggle',
+    'relationship-labels-toggle',
     'tree-documents',
     'tree-count',
     'person-context-menu',
@@ -333,20 +339,23 @@ async function renderTreeFixture(
   await new Promise(resolve => setTimeout(resolve, 25));
 
   const canvas = elementById('canvas');
-  const svg = canvas.children.find(child => child.tag === 'svg');
-  const nodes = canvas.children
-    .filter(child => child.className && child.className.includes('node'))
-    .map(node => ({
-      id: String(node.dataset.id),
-      left: numberFromCss(node.style.cssText, 'left'),
-      top: numberFromCss(node.style.cssText, 'top'),
-      height: Math.max(NODE_H, node.offsetHeight),
-      className: node.className,
-    }));
-
-  const lines = svg
-    ? svg.children.filter(child => child.tag === 'line')
-    : [];
+  const snapshotTree = () => {
+    const svg = canvas.children.find(child => child.tag === 'svg');
+    const nodes = canvas.children
+      .filter(child => child.className && child.className.includes('node'))
+      .map(node => ({
+        id: String(node.dataset.id),
+        left: numberFromCss(node.style.cssText, 'left'),
+        top: numberFromCss(node.style.cssText, 'top'),
+        height: Math.max(NODE_H, node.offsetHeight),
+        className: node.className,
+      }));
+    const lines = svg
+      ? svg.children.filter(child => child.tag === 'line')
+      : [];
+    return { nodes, lines };
+  };
+  const { nodes, lines } = snapshotTree();
 
   return {
     nodes,
@@ -367,6 +376,8 @@ async function renderTreeFixture(
     createNode: context.createNode,
     appendPersonSearchResult: context.appendPersonSearchResult,
     formatAncestorKinship: context.formatAncestorKinship,
+    formatDescendantKinship: context.formatDescendantKinship,
+    formatSpouseKinship: context.formatSpouseKinship,
     personContextMenu: elementById('person-context-menu'),
     contextShowTree: elementById('context-show-tree'),
     contextCompare: elementById('context-compare'),
@@ -381,8 +392,10 @@ async function renderTreeFixture(
     descendantLimitOptions: elementById('descendant-limit-options'),
     treeModeControl: elementById('tree-mode-control'),
     ancestorsOnlyToggle: elementById('ancestors-only-toggle'),
-    generationGuidesControl: elementById('generation-guides-control'),
+    treeViewOptionsControl: elementById('tree-view-options-control'),
     generationGuidesToggle: elementById('generation-guides-toggle'),
+    relationshipLabelsToggle: elementById('relationship-labels-toggle'),
+    snapshotTree,
     crumb: elementById('crumb'),
     location: mockLocation,
   };
@@ -411,7 +424,7 @@ describe('Descendant mode real render', function() {
     assert.deepStrictEqual(commonIds, ['1551', '463']);
     assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
     assert.strictEqual(fixture.treeModeControl.style.display, 'none');
-    assert.strictEqual(fixture.generationGuidesControl.style.display, 'none');
+    assert.strictEqual(fixture.treeViewOptionsControl.style.display, 'none');
     assert.strictEqual(
       fixture.comparisonSummary.children[1].children.filter(child =>
         child.className === 'common-ancestor-summary'
@@ -643,10 +656,9 @@ describe('Descendant mode real render', function() {
     assert.ok(relationshipPaths.every(path => path.attributes['data-routed'] === 'straight'));
     assert.strictEqual(fixture.comparisonSummary.style.display, 'block');
     assert.strictEqual(summaryHeader.children[0].textContent, 'Агульныя продкі');
-    assert.strictEqual(firstRelationship.children[1].textContent, 'Прапрадзед');
+    assert.strictEqual(firstRelationship.children[1].textContent, 'Пра(2)дзед');
     assert.strictEqual(firstRelationship.children[2].textContent, '4-е пакаленне');
-    assert.strictEqual(secondRelationship.children[1].textContent, 'Тая ж асоба');
-    assert.strictEqual(secondRelationship.children.length, 2);
+    assert.strictEqual(secondRelationship.children.length, 1);
     assert.strictEqual(summaryToggle.getAttribute('aria-expanded'), 'true');
     summaryToggle.dispatchEvent({ type: 'click' });
     assert.ok(fixture.comparisonSummary.className.includes('is-collapsed'));
@@ -659,7 +671,9 @@ describe('Descendant mode real render', function() {
     assert.strictEqual(fixture.formatAncestorKinship(2, 1), 'Дзед');
     assert.strictEqual(fixture.formatAncestorKinship(2, 2), 'Бабуля');
     assert.strictEqual(fixture.formatAncestorKinship(3, 1), 'Прадзед');
-    assert.strictEqual(fixture.formatAncestorKinship(5, 2), 'Прапрапрабабуля');
+    assert.strictEqual(fixture.formatAncestorKinship(5, 2), 'Пра(3)бабуля');
+    assert.strictEqual(fixture.formatDescendantKinship(4, 1), 'Пра(2)ўнук');
+    assert.strictEqual(fixture.formatSpouseKinship(5, 2), 'Жонка пра(3)ўнука');
     assert.ok(!fixture.canvas.children.some(child =>
       child.className && child.className.includes('comparison-generation')
     ));
@@ -1085,7 +1099,7 @@ describe('Descendant mode real render', function() {
   it('toggles directional generation bands in normal tree views', async function() {
     const fixture = await renderTreeFixture(11083, 'descendants', 2);
 
-    assert.strictEqual(fixture.generationGuidesControl.style.display, 'block');
+    assert.strictEqual(fixture.treeViewOptionsControl.style.display, 'block');
     assert.strictEqual(fixture.generationGuidesToggle.checked, false);
     fixture.generationGuidesToggle.checked = true;
     fixture.generationGuidesToggle.dispatchEvent({ type: 'change' });
@@ -1093,11 +1107,14 @@ describe('Descendant mode real render', function() {
     let guides = fixture.canvas.children.find(child =>
       child.className === 'tree-generation-guides'
     );
-    let labels = guides.children.map(band => band.children[0].textContent);
+    let labels = guides.children
+      .map(band => band.children[0] && band.children[0].textContent)
+      .filter(Boolean);
     assert.ok(labels.includes('Продкі · Пакаленне 1'));
-    assert.ok(labels.includes('Асноўная асоба'));
+    assert.ok(!labels.includes('Асноўная асоба'));
     assert.ok(labels.includes('Нашчадкі · Пакаленне 1'));
     assert.ok(labels.includes('Нашчадкі · Пакаленне 2'));
+    assert.ok(guides.children.some(band => band.className.includes('is-root')));
     const leftmostCard = Math.min(...fixture.canvas.children
       .filter(child => child.className && child.className.includes('node'))
       .map(node => numberFromCss(node.style.cssText, 'left')));
@@ -1105,7 +1122,9 @@ describe('Descendant mode real render', function() {
 
     fixture.setMode('ancestors');
     guides = fixture.canvas.children.find(child => child.className === 'tree-generation-guides');
-    labels = guides.children.map(band => band.children[0].textContent);
+    labels = guides.children
+      .map(band => band.children[0] && band.children[0].textContent)
+      .filter(Boolean);
     assert.ok(labels.some(label => label.startsWith('Продкі · Пакаленне')));
     assert.ok(!labels.some(label => label.startsWith('Нашчадкі · Пакаленне')));
 
@@ -1114,6 +1133,37 @@ describe('Descendant mode real render', function() {
     assert.ok(!fixture.canvas.children.some(child =>
       child.className === 'tree-generation-guides'
     ));
+  });
+
+  it('toggles relationship labels relative to the displayed tree person', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 2);
+    const relationshipFor = id => {
+      const node = fixture.canvas.children.find(child =>
+        child.dataset && String(child.dataset.id) === String(id)
+      );
+      const label = node && node.children.find(child => child.className === 'node-relation');
+      return label ? label.textContent : null;
+    };
+
+    assert.strictEqual(fixture.relationshipLabelsToggle.checked, false);
+    assert.strictEqual(relationshipFor(11083), null);
+
+    fixture.relationshipLabelsToggle.checked = true;
+    fixture.relationshipLabelsToggle.dispatchEvent({ type: 'change' });
+
+    assert.strictEqual(relationshipFor(11083), null);
+    assert.strictEqual(relationshipFor(1304), 'Бацька');
+    assert.strictEqual(relationshipFor(1307), 'Маці');
+    assert.strictEqual(relationshipFor(11091), 'Жонка');
+    assert.strictEqual(relationshipFor(11093), 'Сын');
+    assert.strictEqual(relationshipFor(11092), 'Дачка');
+    assert.strictEqual(relationshipFor(16186), 'Унук');
+    assert.strictEqual(relationshipFor(8624), 'Зяць');
+    assert.strictEqual(relationshipFor(16807), 'Нявестка');
+
+    fixture.relationshipLabelsToggle.checked = false;
+    fixture.relationshipLabelsToggle.dispatchEvent({ type: 'change' });
+    assert.strictEqual(relationshipFor(11083), null);
   });
 
   it('keeps ancestor connectors out of the #2160 grandmother card', async function() {
@@ -1132,6 +1182,29 @@ describe('Descendant mode real render', function() {
       [],
       'expected ancestor connectors not to cross the #2160 card'
     );
+  });
+
+  it('reserves connector space when a relationship label makes the #2160 card taller', async function() {
+    const fixture = await renderTreeFixture(11083, 'ancestors', null, {
+      '2934': { base: 136, withRelationship: 164 },
+    });
+
+    fixture.relationshipLabelsToggle.checked = true;
+    fixture.relationshipLabelsToggle.dispatchEvent({ type: 'change' });
+
+    const { nodes, lines } = fixture.snapshotTree();
+    const grandmother = nodes.find(node => node.id === '2934');
+    assert.ok(grandmother, 'expected displayed person #2160 to render');
+    const crossings = lines
+      .filter(line => lineCrossesNodeInterior(line, grandmother))
+      .map(line => ({
+        x1: lineNumber(line, 'x1'),
+        y1: lineNumber(line, 'y1'),
+        x2: lineNumber(line, 'x2'),
+        y2: lineNumber(line, 'y2'),
+      }));
+    assert.deepStrictEqual(crossings, [],
+      'expected relationship labels to leave a clear connector lane below #2160');
   });
 
   it('drops #104 third-marriage children from the third marriage segment', async function() {

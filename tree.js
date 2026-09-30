@@ -20,6 +20,7 @@ const NODE_H   = 88;   // node min-height (px) — used for spacing only
 const GAP_X    = 20;   // horizontal gap between sibling nodes
 const GAP_Y    = 80;   // vertical gap between generation rows
 const ROW_H    = NODE_H + GAP_Y;
+const RELATION_ROW_EXTRA = 28; // divider, spacing, and one relationship-label line
 const SP_GAP   = 32;   // gap between root node edge and spouse node edge
 const FAM_GAP  = 40;   // gap between children groups of different spouses
 const STAGGER  = 22;   // vertical stagger between family drop bars (px)
@@ -55,6 +56,7 @@ let contextComparisonPerson = null;
 let comparisonSummaryCollapsed = false;
 let comparisonReturnRootId = null;
 let showGenerationGuides = false;
+let showRelationshipLabels = false;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 const SEARCH_COLLATOR = new Intl.Collator(['be', 'ru'], { sensitivity: 'base' });
@@ -638,7 +640,7 @@ function createTextElement(tag, className, text) {
   return element;
 }
 
-function createNode(person, x, y, isRoot = false) {
+function createNode(person, x, y, isRoot = false, relationship = null) {
   if (!person) return null;
   const name = formatName(person.given, person.patronymic, person.surname, person.maiden)
              || `Асоба #${person.id}`;
@@ -659,6 +661,9 @@ function createNode(person, x, y, isRoot = false) {
     documentsLink.title = 'Дакументы';
     documentsLink.setAttribute('aria-label', `Дакументы: #${person.num}`);
     div.appendChild(documentsLink);
+  }
+  if (relationship) {
+    div.appendChild(createTextElement('div', 'node-relation', relationship));
   }
   div.addEventListener('click', event => {
     if (event.target.closest && event.target.closest('.node-num')) return;
@@ -683,9 +688,13 @@ function renderTree(tree) {
   comparisonSummary.innerHTML = '';
   comparisonSummary.style.display = 'none';
   document.getElementById('tree-mode-control').style.display = 'flex';
-  document.getElementById('generation-guides-control').style.display = 'block';
+  document.getElementById('tree-view-options-control').style.display = 'block';
 
   const { ancestorTree, families } = tree;
+  const relationshipLabels = showRelationshipLabels
+    ? buildRelationshipLabels(ancestorTree.person.id)
+    : null;
+  const rowHeight = ROW_H + (relationshipLabels ? RELATION_ROW_EXTRA : 0);
   const visualFamilies = currentMode === 'descendants'
     ? descendantLayout.orderFamilies(families)
     : families;
@@ -696,7 +705,7 @@ function renderTree(tree) {
     return 1 + Math.max(maxDepth(node.father), maxDepth(node.mother));
   })(ancestorTree) - 1;
 
-  const Y_ROOT      = 24 + actualDepth * ROW_H;
+  const Y_ROOT      = 24 + actualDepth * rowHeight;
   const HLINE_Y     = Y_ROOT + Math.round(NODE_H / 2);
 
   // ── Spouse layout offsets ─────────────────────────────────
@@ -756,7 +765,7 @@ function renderTree(tree) {
     ? computeDescendantDepth(ancestorTree.person.id, descendantLimit)
     : 0;
   const canvasH = Y_ROOT
-    + (descendantDepth + 1) * ROW_H
+    + (descendantDepth + 1) * rowHeight
     + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
@@ -770,23 +779,25 @@ function renderTree(tree) {
         `is-${kind}`,
         generation % 2 === 0 ? 'is-even' : '',
       ].filter(Boolean).join(' ');
-      band.style.cssText = `top:${rowY + NODE_H / 2 - ROW_H / 2}px;height:${ROW_H}px`;
-      band.appendChild(createTextElement('div', 'tree-generation-label', label));
+      band.style.cssText = `top:${rowY + NODE_H / 2 - rowHeight / 2}px;height:${rowHeight}px`;
+      if (label) {
+        band.appendChild(createTextElement('div', 'tree-generation-label', label));
+      }
       guides.appendChild(band);
     };
 
     for (let generation = actualDepth; generation >= 1; generation -= 1) {
       addGuide(
-        Y_ROOT - generation * ROW_H,
+        Y_ROOT - generation * rowHeight,
         `Продкі · Пакаленне ${generation}`,
         'ancestor',
         generation
       );
     }
-    addGuide(Y_ROOT, 'Асноўная асоба', 'root', 0);
+    addGuide(Y_ROOT, '', 'root', 0);
     for (let generation = 1; generation <= descendantDepth; generation += 1) {
       addGuide(
-        Y_ROOT + generation * ROW_H,
+        Y_ROOT + generation * rowHeight,
         `Нашчадкі · Пакаленне ${generation}`,
         'descendant',
         generation
@@ -800,7 +811,10 @@ function renderTree(tree) {
   const nodeElementsById = new Map();
 
   function placeNode(person, cx, y, isRoot = false) {
-    const node = createNode(person, cx - NODE_W/2, y, isRoot);
+    const relationship = relationshipLabels
+      ? relationshipLabels.get(String(person.id)) || null
+      : null;
+    const node = createNode(person, cx - NODE_W/2, y, isRoot, relationship);
     if (node) {
       canvas.appendChild(node);
       nodeElementsById.set(String(person.id), node);
@@ -815,7 +829,7 @@ function renderTree(tree) {
 
   // ── Place ancestor nodes ──────────────────────────────────
   positions.forEach(({ person, cx, depth, occurrenceCount }) => {
-    const node = placeNode(person, cx, Y_ROOT - depth * ROW_H, depth === 0);
+    const node = placeNode(person, cx, Y_ROOT - depth * rowHeight, depth === 0);
     if (node && occurrenceCount > 1) {
       node.classList.add('is-pedigree-collapse');
       node.title = 'Агульны продак у некалькіх галінах';
@@ -843,15 +857,15 @@ function renderTree(tree) {
   edgesByChild.forEach((edges, childId) => {
     const childPos = posById.get(childId);
     if (!childPos) return;
-    const childY = Y_ROOT - childPos.depth * ROW_H;
+    const childY = Y_ROOT - childPos.depth * rowHeight;
     const fatherEdge = edges.find(edge => edge.kind === 'father');
     const motherEdge = edges.find(edge => edge.kind === 'mother');
     const fpos = fatherEdge ? posById.get(fatherEdge.parentId) : null;
     const mpos = motherEdge ? posById.get(motherEdge.parentId) : null;
 
     if (fpos && mpos) {
-      const fatherY = Y_ROOT - fpos.depth * ROW_H;
-      const motherY = Y_ROOT - mpos.depth * ROW_H;
+      const fatherY = Y_ROOT - fpos.depth * rowHeight;
+      const motherY = Y_ROOT - mpos.depth * rowHeight;
       const fatherBottom = renderedNodeBottom(fpos.id, fatherY);
       const motherBottom = renderedNodeBottom(mpos.id, motherY);
       const coupleY = Math.min(
@@ -875,7 +889,7 @@ function renderTree(tree) {
       const parentPos = fpos || mpos;
       if (!parentPos) return;
       if ((sharedSingleParentGroups.get(parentPos.id) || []).length > 1) return;
-      const parentY = Y_ROOT - parentPos.depth * ROW_H;
+      const parentY = Y_ROOT - parentPos.depth * rowHeight;
       const parentBottom = renderedNodeBottom(parentPos.id, parentY);
       const color = fpos ? '#999' : '#999';
       const elbowY = Math.min(childY - 8, parentBottom + Math.round(GAP_Y * 0.5));
@@ -898,12 +912,12 @@ function renderTree(tree) {
       const parent = posById.get(parentId);
       const children = childIds.map(childId => posById.get(childId)).filter(Boolean);
       if (!parent || children.length < 2) return;
-      const parentY = Y_ROOT - parent.depth * ROW_H;
+      const parentY = Y_ROOT - parent.depth * rowHeight;
       const parentBottom = renderedNodeBottom(parent.id, parentY);
       const lane = sharedLanesByDepth.get(parent.depth) || 0;
       sharedLanesByDepth.set(parent.depth, lane + 1);
       const branchY = Math.min(
-        ...children.map(child => Y_ROOT - child.depth * ROW_H - 8),
+        ...children.map(child => Y_ROOT - child.depth * rowHeight - 8),
         parentBottom + 16 + (lane % 4) * 8
       );
       const childCxs = children.map(child => child.cx);
@@ -913,7 +927,7 @@ function renderTree(tree) {
       const segments = [[parent.cx, parentBottom, parent.cx, branchY]];
       if (leftCx !== rightCx) segments.push([leftCx, branchY, rightCx, branchY]);
       children.forEach(child => {
-        segments.push([child.cx, branchY, child.cx, Y_ROOT - child.depth * ROW_H]);
+        segments.push([child.cx, branchY, child.cx, Y_ROOT - child.depth * rowHeight]);
       });
 
       const segmentAttributes = ([x1, y1, x2, y2]) => ({
@@ -952,10 +966,28 @@ function renderTree(tree) {
 
   // ── Below root: draw descendants ───────────────────────────
   if (currentMode === 'descendants') {
-    renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, descendantLimit);
+    renderDescendants(
+      svg,
+      ancestorTree,
+      rootCx,
+      Y_ROOT,
+      orderedFams,
+      MARGIN,
+      descendantLimit,
+      rowHeight
+    );
   }
 
-function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGIN, maxGenerations) {
+function renderDescendants(
+  svg,
+  ancestorTree,
+  rootCx,
+  Y_ROOT,
+  orderedFams,
+  MARGIN,
+  maxGenerations,
+  rowHeight = ROW_H
+) {
   if (maxGenerations <= 0) return;
   const rootFamilies = orderedFams.filter(Boolean);
   const expandedPeople = new Set([String(ancestorTree.person.id)]);
@@ -968,7 +1000,8 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
     rootFamilies,
     true,
     MARGIN,
-    maxGenerations
+    maxGenerations,
+    rowHeight
   ).filter(({ person }) => {
     const key = String(person.id);
     if (expandedPeople.has(key)) return false;
@@ -991,7 +1024,8 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
         families,
         true,
         MARGIN,
-        remainingGenerations
+        remainingGenerations,
+        rowHeight
       ).forEach(position => {
         const key = String(position.person.id);
         if (expandedPeople.has(key)) return;
@@ -1003,11 +1037,21 @@ function renderDescendants(svg, ancestorTree, rootCx, Y_ROOT, orderedFams, MARGI
   }
 }
 
-function renderDescendantParent(svg, parent, parentCx, parentY, families, renderSpouses, MARGIN, remainingGenerations) {
+function renderDescendantParent(
+  svg,
+  parent,
+  parentCx,
+  parentY,
+  families,
+  renderSpouses,
+  MARGIN,
+  remainingGenerations,
+  rowHeight = ROW_H
+) {
   if (!(families || []).length || remainingGenerations <= 0) return [];
 
-  const Y_CH = parentY + ROW_H;
-  const baseDropY = parentY + ROW_H - 16;
+  const Y_CH = parentY + rowHeight;
+  const baseDropY = parentY + rowHeight - 16;
   const familyLayout = descendantLayout.positionChildFamilyBlocks(
     parentCx,
     families,
@@ -1318,12 +1362,92 @@ function drawComparisonCouple(svg, firstParent, secondParent, couple) {
 }
 
 function formatAncestorKinship(generations, sex) {
-  if (generations === 0) return 'Тая ж асоба';
+  if (generations === 0) return '';
   if (generations === 1) return sex === 1 ? 'Бацька' : sex === 2 ? 'Маці' : 'Продак';
   if (generations === 2) return sex === 1 ? 'Дзед' : sex === 2 ? 'Бабуля' : 'Продак';
-  const prefix = 'пра'.repeat(generations - 2);
+  const greatCount = generations - 2;
+  const prefix = greatCount === 1 ? 'пра' : `пра(${greatCount})`;
   const kinship = sex === 1 ? `${prefix}дзед` : sex === 2 ? `${prefix}бабуля` : 'продак';
   return kinship[0].toUpperCase() + kinship.slice(1);
+}
+
+function formatDescendantKinship(generations, sex) {
+  if (generations === 0) return '';
+  if (generations === 1) return sex === 1 ? 'Сын' : sex === 2 ? 'Дачка' : 'Нашчадак';
+  if (generations === 2) return sex === 1 ? 'Унук' : sex === 2 ? 'Унучка' : 'Нашчадак';
+  const greatCount = generations - 2;
+  const prefix = greatCount === 1 ? 'пра' : `пра(${greatCount})`;
+  const kinship = sex === 1 ? `${prefix}ўнук` : sex === 2 ? `${prefix}ўнучка` : 'нашчадак';
+  return kinship[0].toUpperCase() + kinship.slice(1);
+}
+
+function formatSpouseKinship(descendantGenerations, sex) {
+  if (descendantGenerations === 0) {
+    return sex === 1 ? 'Муж' : sex === 2 ? 'Жонка' : 'Сужэнец';
+  }
+  if (descendantGenerations === 1) {
+    return sex === 1 ? 'Зяць' : sex === 2 ? 'Нявестка' : 'Сужэнец дзіцяці';
+  }
+  const greatCount = descendantGenerations - 2;
+  const prefix = greatCount === 0 ? '' : greatCount === 1 ? 'пра' : `пра(${greatCount})`;
+  if (sex === 1) return `Муж ${prefix}ўнучкі`;
+  if (sex === 2) return `Жонка ${prefix}ўнука`;
+  return 'Сужэнец нашчадка';
+}
+
+function buildRelationshipLabels(rootId) {
+  const rootKey = String(rootId);
+  const labels = new Map();
+  const ancestorDistances = new Map([[rootKey, 0]]);
+  const ancestorQueue = [Number(rootId)];
+
+  while (ancestorQueue.length) {
+    const personId = ancestorQueue.shift();
+    const distance = ancestorDistances.get(String(personId));
+    for (const parentId of PA[personId] || []) {
+      if (!parentId) continue;
+      const key = String(parentId);
+      if (ancestorDistances.has(key)) continue;
+      ancestorDistances.set(key, distance + 1);
+      ancestorQueue.push(Number(parentId));
+    }
+  }
+
+  ancestorDistances.forEach((distance, id) => {
+    if (id === rootKey) return;
+    const person = buildPerson(Number(id));
+    if (person) labels.set(id, formatAncestorKinship(distance, person.sex));
+  });
+
+  const descendantDistances = new Map([[rootKey, 0]]);
+  const descendantQueue = [Number(rootId)];
+  while (descendantQueue.length) {
+    const personId = descendantQueue.shift();
+    const distance = descendantDistances.get(String(personId));
+    for (const childId of CH[personId] || []) {
+      const key = String(childId);
+      if (descendantDistances.has(key)) continue;
+      descendantDistances.set(key, distance + 1);
+      descendantQueue.push(Number(childId));
+    }
+  }
+
+  descendantDistances.forEach((distance, id) => {
+    if (id === rootKey || labels.has(id)) return;
+    const person = buildPerson(Number(id));
+    if (person) labels.set(id, formatDescendantKinship(distance, person.sex));
+  });
+
+  descendantDistances.forEach((distance, id) => {
+    for (const [spouseId] of MA[id] || []) {
+      const spouseKey = String(spouseId);
+      if (labels.has(spouseKey)) continue;
+      const spouse = buildPerson(spouseId);
+      if (spouse) labels.set(spouseKey, formatSpouseKinship(distance, spouse.sex));
+    }
+  });
+
+  return labels;
 }
 
 function renderCommonAncestorSummary(graph, firstName, secondName) {
@@ -1368,9 +1492,12 @@ function renderCommonAncestorSummary(graph, firstName, secondName) {
         relation.appendChild(createTextElement(
           'div', 'common-ancestor-relation-person', personName
         ));
-        relation.appendChild(createTextElement(
-          'div', 'common-ancestor-relation-name', formatAncestorKinship(distance, person.sex)
-        ));
+        const kinship = formatAncestorKinship(distance, person.sex);
+        if (kinship) {
+          relation.appendChild(createTextElement(
+            'div', 'common-ancestor-relation-name', kinship
+          ));
+        }
         if (distance > 0) {
           relation.appendChild(createTextElement(
             'div', 'common-ancestor-relation-generation', `${distance}-е пакаленне`
@@ -1412,7 +1539,7 @@ function renderCommonAncestorTree(firstId, secondId) {
   comparisonSummary.innerHTML = '';
   comparisonSummary.style.display = 'none';
   document.getElementById('tree-mode-control').style.display = 'none';
-  document.getElementById('generation-guides-control').style.display = 'none';
+  document.getElementById('tree-view-options-control').style.display = 'none';
   if (!currentComparison) comparisonReturnRootId = currentRootId || firstPerson.id;
   currentComparison = [firstPerson.id, secondPerson.id];
   currentRootId = firstPerson.id;
@@ -1638,6 +1765,13 @@ function initUI() {
   generationGuidesToggle.checked = showGenerationGuides;
   generationGuidesToggle.addEventListener('change', () => {
     showGenerationGuides = generationGuidesToggle.checked;
+    if (!currentComparison && currentRootId) renderTree(buildTree(currentRootId));
+  });
+
+  const relationshipLabelsToggle = document.getElementById('relationship-labels-toggle');
+  relationshipLabelsToggle.checked = showRelationshipLabels;
+  relationshipLabelsToggle.addEventListener('change', () => {
+    showRelationshipLabels = relationshipLabelsToggle.checked;
     if (!currentComparison && currentRootId) renderTree(buildTree(currentRootId));
   });
 

@@ -80,12 +80,15 @@ describe('UI layout', function() {
     const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
     const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
 
-    assert.match(html, /id="generation-guides-control"/);
+    assert.match(html, /id="tree-view-options-control"/);
     assert.match(html, /id="descendant-limit-control"[\s\S]*?<span>Пакаленні<\/span>/);
-    assert.match(html, /<details class="tree-view-options" id="generation-guides-control">[\s\S]*?id="descendant-limit-control"/);
+    assert.match(html, /<details class="tree-view-options" id="tree-view-options-control">[\s\S]*?id="descendant-limit-control"/);
     assert.match(html, /<summary>Выгляд<\/summary>[\s\S]*?id="generation-guides-toggle" type="checkbox"[\s\S]*?<span>Лініі пакаленняў<\/span>/);
+    assert.match(html, /id="relationship-labels-toggle" type="checkbox"[\s\S]*?<span>Сваяцтва<\/span>/);
     assert.doesNotMatch(html, /class="generation-guides-icon"/);
     assert.match(css, /\.tree-view-options-menu\s*\{/);
+    assert.match(css, /\.node-relation\s*\{[\s\S]*?border-top:/);
+    assert.match(css, /\.node\.is-root\s*\{[\s\S]*?border:\s*2px solid #6d6964;[\s\S]*?background:\s*#fbfaf8;[\s\S]*?box-shadow:/);
     assert.match(css, /\.generation-limit\s*\{[\s\S]*?border:\s*1px solid #d0cdc8;[\s\S]*?border-radius:\s*7px;[\s\S]*?overflow:\s*hidden;/);
     assert.match(css, /\.generation-limit-btn\s*\{[\s\S]*?border-right:\s*1px solid #d0cdc8;/);
     assert.match(css, /\.tree-generation-band\s*\{/);
