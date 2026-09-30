@@ -1221,6 +1221,34 @@ describe('Descendant mode real render', function() {
     assert.deepStrictEqual(marriageLabels(), []);
   });
 
+  it('renders all three #2171 husbands, including the marriage without children', async function() {
+    const { nodes, lines } = await renderTreeFixture(2063, 'descendants', 1);
+    const root = nodes.find(node => node.id === '2063');
+    const husbands = ['867', '6835', '1225'].map(id => nodes.find(node => node.id === id));
+
+    assert.ok(root, 'expected #2171 to render');
+    assert.ok(husbands.every(Boolean), 'expected all three husbands to render');
+    husbands.forEach(husband => {
+      const husbandCx = husband.left + NODE_W / 2;
+      const marriageY = root.top + NODE_H / 2;
+      assert.ok(lines.some(line =>
+        line.attributes['stroke-dasharray'] === '5,4' &&
+        lineNumber(line, 'y1') === marriageY &&
+        lineNumber(line, 'y2') === marriageY &&
+        (lineNumber(line, 'x1') === husbandCx || lineNumber(line, 'x2') === husbandCx)
+      ), `expected a marriage line to husband ${husband.id}`);
+    });
+  });
+
+  it('renders all three #2171 husbands when viewing her father\'s tree', async function() {
+    const { nodes } = await renderTreeFixture(6262, 'descendants', 2);
+    const daughter = nodes.find(node => node.id === '2063');
+    const husbands = ['867', '6835', '1225'].map(id => nodes.find(node => node.id === id));
+
+    assert.ok(daughter, 'expected #2171 in her father\'s descendants');
+    assert.ok(husbands.every(Boolean), 'expected all three of her husbands to render');
+  });
+
   it('keeps ancestor connectors out of the #2160 grandmother card', async function() {
     const { nodes, lines } = await renderTreeFixture(11083, 'ancestors', null, { '2934': 104 });
     const grandmother = nodes.find(node => node.id === '2934');
@@ -1330,24 +1358,31 @@ describe('Descendant mode real render', function() {
     );
   });
 
-  it('keeps #2287 spouse and sibling gaps compact when nothing visible occupies them', async function() {
+  it('keeps #2287 spouse and sibling gaps compact around every visible card', async function() {
     const { nodes } = await renderTreeFixture(1156, 'descendants');
     const secondWife = nodes.find(node => node.id === '2470');
     const spouse734 = nodes.find(node => node.id === '734');
     const prokhor = nodes.find(node => node.id === '7714');
+    const prokhorWife = nodes.find(node => node.id === '8131');
     const nikolai = nodes.find(node => node.id === '7715');
 
     assert.ok(secondWife && spouse734, 'expected both visible spouses of #2287 to render');
-    assert.ok(prokhor && nikolai, 'expected both brothers to render');
+    assert.ok(prokhor && prokhorWife && nikolai,
+      'expected both brothers and Prokhor\'s wife to render');
     assert.strictEqual(
       spouse734.left - secondWife.left,
       NODE_W + SP_GAP,
       'expected consecutive spouse cards to use the standard spouse gap'
     );
     assert.strictEqual(
-      nikolai.left - prokhor.left,
+      prokhorWife.left - prokhor.left,
+      NODE_W + SP_GAP,
+      'expected Prokhor and his wife to use the standard spouse gap'
+    );
+    assert.strictEqual(
+      nikolai.left - prokhorWife.left,
       NODE_W + GAP_X,
-      'expected brothers without a visible subtree between them to use the standard sibling gap'
+      'expected Nikolai to follow the visible spouse at the standard sibling gap'
     );
   });
 

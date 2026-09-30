@@ -289,8 +289,21 @@
 
       const { orderedFams, spouseOffsets, anchorOffsets } = splitFamilies(families);
       const familyBlocks = makeChildFamilyBlocks(orderedFams, remainingGenerations, nextVisiting);
+      const contours = [{ left: -nodeWidth / 2, right: nodeWidth / 2 }];
+      orderedFams.forEach((family, familyIndex) => {
+        if (!family.spouse) return;
+        const spouseOffset = spouseOffsets[familyIndex];
+        mergeContour(
+          contours,
+          0,
+          spouseOffset - nodeWidth / 2,
+          spouseOffset + nodeWidth / 2
+        );
+      });
       if (!familyBlocks.length) {
-        const layout = leafLayout();
+        const minX = Math.min(...contours.filter(Boolean).map(contour => contour.left));
+        const maxX = Math.max(...contours.filter(Boolean).map(contour => contour.right));
+        const layout = { width: maxX - minX, rootOffset: -minX, contours };
         layoutCache.set(cacheKey, layout);
         return layout;
       }
@@ -307,19 +320,6 @@
         familyBlocks.length === 1 ? childrenStart : null,
         remainingGenerations === 1
       );
-      const contours = [{ left: -nodeWidth / 2, right: nodeWidth / 2 }];
-
-      familyBlocks.forEach(block => {
-        if (!block.fam.spouse) return;
-        const spouseOffset = spouseOffsets[block.fi];
-        mergeContour(
-          contours,
-          0,
-          spouseOffset - nodeWidth / 2,
-          spouseOffset + nodeWidth / 2
-        );
-      });
-
       familyBlocks.forEach((block, blockIndex) => {
         const anchorOffsetForBlock = familyBlockAnchorOffset(block, anchorOffsets);
         const shouldUseCompactAnchor = familyBlocks.length === 1;

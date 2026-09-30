@@ -1113,27 +1113,34 @@ function renderDescendantParent(
     MARGIN,
     parent.id
   );
-  const { positionedBlocks } = familyLayout;
+  const {
+    positionedBlocks,
+    orderedFams: rowFamilies,
+    spouseOffsets: rowSpouseOffsets,
+    marriageFromOffsets: rowMarriageFromOffsets,
+  } = familyLayout;
 
   if (renderSpouses) {
-    positionedBlocks.forEach(blk => {
-      if (!blk.fam.spouse) return;
-      placeNode(blk.fam.spouse, blk.spouseCx, parentY);
+    rowFamilies.forEach((family, familyIndex) => {
+      if (!family.spouse) return;
+      const spouseCx = parentCx + rowSpouseOffsets[familyIndex];
+      const marriageFromCx = parentCx + rowMarriageFromOffsets[familyIndex];
+      placeNode(family.spouse, spouseCx, parentY);
       const hlineY = parentY + Math.round(NODE_H / 2);
       drawLine(
         svg,
-        blk.marriageFromCx,
+        marriageFromCx,
         hlineY,
-        blk.spouseCx,
+        spouseCx,
         hlineY,
-        positionedBlocks.length === 1 ? '#999' : '#aaa',
+        rowFamilies.length === 1 ? '#999' : '#aaa',
         true
       );
       placeMarriageDate(
         parent.id,
-        blk.fam.spouse.id,
-        blk.fam.date || marriageDateBetween(parent.id, blk.fam.spouse.id),
-        (blk.marriageFromCx + blk.spouseCx) / 2,
+        family.spouse.id,
+        family.date || marriageDateBetween(parent.id, family.spouse.id),
+        (marriageFromCx + spouseCx) / 2,
         hlineY
       );
     });
@@ -1145,9 +1152,9 @@ function renderDescendantParent(
     blk.stubStartY = blk.fam.spouse ? parentY + Math.round(NODE_H / 2) : nodeBot(parentY);
   });
 
-  const familyRowBottom = positionedBlocks.reduce((bottom, blk) => {
-    if (!blk.fam.spouse) return bottom;
-    return Math.max(bottom, renderedNodeBottom(blk.fam.spouse.id, parentY));
+  const familyRowBottom = rowFamilies.reduce((bottom, family) => {
+    if (!family.spouse) return bottom;
+    return Math.max(bottom, renderedNodeBottom(family.spouse.id, parentY));
   }, renderedNodeBottom(parent.id, parentY));
   const minimumDropY = familyRowBottom + 8;
   const effectiveLaneGap = viewDescendantLayout.connectorLaneGap(

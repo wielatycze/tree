@@ -93,15 +93,15 @@ describe('DescendantLayout', function() {
     assert.deepStrictEqual(split.anchorOffsets, [-92, 92, 0, 276]);
   });
 
-  it('does not reserve width for a spouse-only branch that is not rendered', function() {
+  it('reserves parent-row width for a spouse without recorded children', function() {
     const layout = makeLayout({
       1: [{ spouse: { id: 2 }, children: [] }],
     });
 
     assert.deepStrictEqual(layout.computeLayout(1), {
-      width: NODE_W,
+      width: NODE_W + SP_GAP + NODE_W,
       rootOffset: NODE_W / 2,
-      contours: [{ left: -NODE_W / 2, right: NODE_W / 2 }],
+      contours: [{ left: -NODE_W / 2, right: NODE_W + SP_GAP + NODE_W / 2 }],
     });
   });
 
