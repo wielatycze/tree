@@ -486,6 +486,20 @@ svg.connectors {
   pointer-events: none;
 }
 
+.marriage-date-label::after {
+  content: '';
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border: 1px solid #756e67;
+  border-radius: 50%;
+  background: #fdfcf9;
+  transform: translate(-50%, -50%);
+}
+
 /* ── Person nodes ─────────────────────────────────────────── */
 .node {
   position: absolute;

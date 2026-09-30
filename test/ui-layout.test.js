@@ -86,6 +86,8 @@ describe('UI layout', function() {
     assert.match(html, /<summary>Выгляд<\/summary>[\s\S]*?id="generation-guides-toggle" type="checkbox"[\s\S]*?<span>Лініі пакаленняў<\/span>/);
     assert.match(html, /id="relationship-labels-toggle" type="checkbox"[\s\S]*?<span>Сваяцтва<\/span>/);
     assert.match(html, /id="marriage-dates-toggle" type="checkbox"[\s\S]*?<span>Шлюбы<\/span>/);
+    assert.match(css, /\.marriage-date-label::after\s*\{/);
+    assert.match(css, /top:\s*calc\(100% \+ 5px\)/);
     assert.doesNotMatch(html, /class="generation-guides-icon"/);
     assert.match(css, /\.tree-view-options-menu\s*\{/);
     assert.match(css, /\.node-relation\s*\{[\s\S]*?border-top:/);
