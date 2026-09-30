@@ -52,16 +52,22 @@
       const orderedFams = families.length > 1 ? [families[0], ...families.slice(1)] : families;
       const leftFams = families.length > 1 ? [families[0]] : [];
       const rightFams = families.length > 1 ? families.slice(1) : families;
-      let leftSpouseIndex = 0;
-      let rightSpouseIndex = 0;
-      const leftSpouseOffsets = leftFams.map(fam => fam.spouse
-        ? -(nodeWidth + spouseGap + leftSpouseIndex++ * (nodeWidth + spouseGap))
-        : null
-      );
-      const rightSpouseOffsets = rightFams.map(fam => fam.spouse
-        ? nodeWidth + spouseGap + rightSpouseIndex++ * (nodeWidth + spouseGap)
-        : null
-      );
+      const gapForFamily = fam => {
+        const value = typeof spouseGap === 'function' ? spouseGap(fam) : spouseGap;
+        return Number.isFinite(value) ? Math.max(0, value) : 0;
+      };
+      let leftDistance = 0;
+      let rightDistance = 0;
+      const leftSpouseOffsets = leftFams.map(fam => {
+        if (!fam.spouse) return null;
+        leftDistance += nodeWidth + gapForFamily(fam);
+        return -leftDistance;
+      });
+      const rightSpouseOffsets = rightFams.map(fam => {
+        if (!fam.spouse) return null;
+        rightDistance += nodeWidth + gapForFamily(fam);
+        return rightDistance;
+      });
       const spouseOffsets = [...leftSpouseOffsets, ...rightSpouseOffsets];
       const marriageFromOffsets = [];
       const anchorOffsets = [];

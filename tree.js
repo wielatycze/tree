@@ -25,6 +25,7 @@ const SP_GAP   = 32;   // gap between root node edge and spouse node edge
 const FAM_GAP  = 40;   // gap between children groups of different spouses
 const STAGGER  = 22;   // vertical stagger between family drop bars (px)
 const LABEL_W  = 148;  // left gutter for optional generation labels
+const MARRIAGE_DATE_MIN_GAP = 80;
 
 // Derived row Y positions (relative to canvas top)
 const Y_GGP  = 24;                    // great-grandparents
@@ -57,6 +58,7 @@ let comparisonSummaryCollapsed = false;
 let comparisonReturnRootId = null;
 let showGenerationGuides = false;
 let showRelationshipLabels = false;
+let showMarriageDates = false;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 const SEARCH_COLLATOR = new Intl.Collator(['be', 'ru'], { sensitivity: 'base' });
@@ -467,27 +469,50 @@ function buildFamilyGroups(personId) {
   return validFamilies;
 }
 
-const descendantLayout = DescendantLayout.create({
-  nodeWidth: NODE_W,
-  gapX: GAP_X,
-  spouseGap: SP_GAP,
-  familyGap: FAM_GAP,
-  stagger: STAGGER,
-  birthYear,
-  getFamilies: buildFamilyGroups,
-  treeLayout: TreeLayout,
+function marriageDateBetween(firstPersonId, secondPersonId) {
+  if (!firstPersonId || !secondPersonId) return null;
+  const findDate = (personId, spouseId) => {
+    const marriage = (MA[personId] || []).find(([candidateId, date]) =>
+      String(candidateId) === String(spouseId) && date && date[0]
+    );
+    return marriage ? marriage[1] : null;
+  };
+  return findDate(firstPersonId, secondPersonId) || findDate(secondPersonId, firstPersonId);
+}
+
+function createDescendantLayout(spouseGap) {
+  return DescendantLayout.create({
+    nodeWidth: NODE_W,
+    gapX: GAP_X,
+    spouseGap,
+    familyGap: FAM_GAP,
+    stagger: STAGGER,
+    birthYear,
+    getFamilies: buildFamilyGroups,
+    treeLayout: TreeLayout,
+  });
+}
+
+const descendantLayout = createDescendantLayout(SP_GAP);
+const marriageDateDescendantLayout = createDescendantLayout(family => {
+  if (!family.date || !family.date[0]) return SP_GAP;
+  return Math.max(MARRIAGE_DATE_MIN_GAP, formatDate(family.date).length * 6 + 16);
 });
+
+function activeDescendantLayout() {
+  return showMarriageDates ? marriageDateDescendantLayout : descendantLayout;
+}
 
 function resolveDescendantGenerationLimit() {
   return descendantGenerationLimit == null ? Infinity : Math.max(1, descendantGenerationLimit);
 }
 
 function computeDescendantDepth(personId, maxDepth = Infinity) {
-  return descendantLayout.computeDepth(personId, maxDepth);
+  return activeDescendantLayout().computeDepth(personId, maxDepth);
 }
 
 function computeDescendantLayout(personId, remainingGenerations = Infinity) {
-  return descendantLayout.computeLayout(personId, remainingGenerations);
+  return activeDescendantLayout().computeLayout(personId, remainingGenerations);
 }
 
 function computeDescendantWidth(personId) {
@@ -695,8 +720,9 @@ function renderTree(tree) {
     ? buildRelationshipLabels(ancestorTree.person.id)
     : null;
   const rowHeight = ROW_H + (relationshipLabels ? RELATION_ROW_EXTRA : 0);
+  const viewDescendantLayout = activeDescendantLayout();
   const visualFamilies = currentMode === 'descendants'
-    ? descendantLayout.orderFamilies(families)
+    ? viewDescendantLayout.orderFamilies(families)
     : families;
 
   // ── Ancestor depth & Y_ROOT ───────────────────────────────
@@ -717,7 +743,7 @@ function renderTree(tree) {
     rightSpouseOffsets,
     spouseOffsets,
     marriageFromOffsets,
-  } = descendantLayout.splitFamilies(visualFamilies);
+  } = viewDescendantLayout.splitFamilies(visualFamilies);
 
   // ── Compute below-root width ───────────────────────────────
   const descendantLimit = resolveDescendantGenerationLimit();
@@ -809,6 +835,7 @@ function renderTree(tree) {
   canvas.appendChild(svg);
 
   const nodeElementsById = new Map();
+  const labelledMarriages = new Set();
 
   function placeNode(person, cx, y, isRoot = false) {
     const relationship = relationshipLabels
@@ -825,6 +852,19 @@ function renderTree(tree) {
   function renderedNodeBottom(personId, y) {
     const node = nodeElementsById.get(String(personId));
     return y + Math.max(NODE_H, node ? node.offsetHeight : 0);
+  }
+
+  function placeMarriageDate(firstPersonId, secondPersonId, date, cx, lineY) {
+    if (!showMarriageDates || !date || !date[0]) return;
+    const key = [String(firstPersonId), String(secondPersonId)].sort().join(':');
+    if (labelledMarriages.has(key)) return;
+    labelledMarriages.add(key);
+
+    const label = createTextElement('div', 'marriage-date-label', formatDate(date));
+    label.dataset.couple = key;
+    label.title = 'Дата шлюбу';
+    label.style.cssText = `left:${cx}px;top:${lineY - 4}px`;
+    canvas.appendChild(label);
   }
 
   // ── Place ancestor nodes ──────────────────────────────────
@@ -877,6 +917,13 @@ function renderTree(tree) {
       drawLine(svg, fpos.cx, fatherBottom, fpos.cx, coupleY, '#999');
       drawLine(svg, mpos.cx, motherBottom, mpos.cx, coupleY, '#999');
       drawLine(svg, fpos.cx, coupleY, mpos.cx, coupleY, '#aaa');
+      placeMarriageDate(
+        fpos.id,
+        mpos.id,
+        marriageDateBetween(fpos.id, mpos.id),
+        barMid,
+        coupleY
+      );
       if (Math.abs(barMid - childPos.cx) > 0.5) {
         const branchY = Math.min(childY - 8, coupleY + 16);
         drawLine(svg, barMid, coupleY, barMid, branchY, '#999');
@@ -961,6 +1008,13 @@ function renderTree(tree) {
       const marriageFromCx = rootCx + marriageFromOffsets[i];
       placeNode(fam.spouse, spouseCx, Y_ROOT);
       drawLine(svg, marriageFromCx, HLINE_Y, spouseCx, HLINE_Y, '#999', true);
+      placeMarriageDate(
+        ancestorTree.person.id,
+        fam.spouse.id,
+        fam.date || marriageDateBetween(ancestorTree.person.id, fam.spouse.id),
+        (marriageFromCx + spouseCx) / 2,
+        HLINE_Y
+      );
     });
   }
 
@@ -1052,7 +1106,7 @@ function renderDescendantParent(
 
   const Y_CH = parentY + rowHeight;
   const baseDropY = parentY + rowHeight - 16;
-  const familyLayout = descendantLayout.positionChildFamilyBlocks(
+  const familyLayout = viewDescendantLayout.positionChildFamilyBlocks(
     parentCx,
     families,
     remainingGenerations,
@@ -1075,6 +1129,13 @@ function renderDescendantParent(
         positionedBlocks.length === 1 ? '#999' : '#aaa',
         true
       );
+      placeMarriageDate(
+        parent.id,
+        blk.fam.spouse.id,
+        blk.fam.date || marriageDateBetween(parent.id, blk.fam.spouse.id),
+        (blk.marriageFromCx + blk.spouseCx) / 2,
+        hlineY
+      );
     });
   }
 
@@ -1089,7 +1150,7 @@ function renderDescendantParent(
     return Math.max(bottom, renderedNodeBottom(blk.fam.spouse.id, parentY));
   }, renderedNodeBottom(parent.id, parentY));
   const minimumDropY = familyRowBottom + 8;
-  const effectiveLaneGap = descendantLayout.connectorLaneGap(
+  const effectiveLaneGap = viewDescendantLayout.connectorLaneGap(
     positionedBlocks,
     baseDropY,
     minimumDropY
@@ -1772,6 +1833,13 @@ function initUI() {
   relationshipLabelsToggle.checked = showRelationshipLabels;
   relationshipLabelsToggle.addEventListener('change', () => {
     showRelationshipLabels = relationshipLabelsToggle.checked;
+    if (!currentComparison && currentRootId) renderTree(buildTree(currentRootId));
+  });
+
+  const marriageDatesToggle = document.getElementById('marriage-dates-toggle');
+  marriageDatesToggle.checked = showMarriageDates;
+  marriageDatesToggle.addEventListener('change', () => {
+    showMarriageDates = marriageDatesToggle.checked;
     if (!currentComparison && currentRootId) renderTree(buildTree(currentRootId));
   });
 

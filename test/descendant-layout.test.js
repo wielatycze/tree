@@ -8,11 +8,11 @@ const SP_GAP = 32;
 const FAM_GAP = 40;
 const STAGGER = 22;
 
-function makeLayout(familiesById = {}) {
+function makeLayout(familiesById = {}, spouseGap = SP_GAP) {
   return DescendantLayout.create({
     nodeWidth: NODE_W,
     gapX: GAP_X,
-    spouseGap: SP_GAP,
+    spouseGap,
     familyGap: FAM_GAP,
     stagger: STAGGER,
     birthYear: person => person.birthYear || 9999,
@@ -61,6 +61,20 @@ describe('DescendantLayout', function() {
     assert.deepStrictEqual(split.spouseOffsets, [-184, 184, 368]);
     assert.deepStrictEqual(split.marriageFromOffsets, [0, 0, 184]);
     assert.deepStrictEqual(split.anchorOffsets, [-92, 92, 276]);
+  });
+
+  it('supports date-sized gaps for individual marriages', function() {
+    const layout = makeLayout({}, family => family.gap);
+    const families = [
+      { spouse: { id: 1 }, children: [], gap: 80 },
+      { spouse: { id: 2 }, children: [], gap: 120 },
+      { spouse: { id: 3 }, children: [], gap: 90 },
+    ];
+
+    const split = layout.splitFamilies(families);
+
+    assert.deepStrictEqual(split.spouseOffsets, [-232, 272, 514]);
+    assert.deepStrictEqual(split.marriageFromOffsets, [0, 0, 272]);
   });
 
   it('does not reserve a spouse slot for an anonymous family', function() {

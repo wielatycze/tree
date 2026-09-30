@@ -263,6 +263,7 @@ async function renderTreeFixture(
     'tree-view-options-control',
     'generation-guides-toggle',
     'relationship-labels-toggle',
+    'marriage-dates-toggle',
     'tree-documents',
     'tree-count',
     'person-context-menu',
@@ -395,6 +396,7 @@ async function renderTreeFixture(
     treeViewOptionsControl: elementById('tree-view-options-control'),
     generationGuidesToggle: elementById('generation-guides-toggle'),
     relationshipLabelsToggle: elementById('relationship-labels-toggle'),
+    marriageDatesToggle: elementById('marriage-dates-toggle'),
     snapshotTree,
     crumb: elementById('crumb'),
     location: mockLocation,
@@ -1164,6 +1166,59 @@ describe('Descendant mode real render', function() {
     fixture.relationshipLabelsToggle.checked = false;
     fixture.relationshipLabelsToggle.dispatchEvent({ type: 'change' });
     assert.strictEqual(relationshipFor(11083), null);
+  });
+
+  it('shows known marriage dates for couples when enabled', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 2);
+    const marriageLabels = () => fixture.canvas.children.filter(child =>
+      child.className === 'marriage-date-label'
+    );
+
+    assert.strictEqual(fixture.marriageDatesToggle.checked, false);
+    assert.deepStrictEqual(marriageLabels(), []);
+
+    fixture.marriageDatesToggle.checked = true;
+    fixture.marriageDatesToggle.dispatchEvent({ type: 'change' });
+
+    const labelsByCouple = new Map(marriageLabels().map(label => [
+      label.dataset.couple,
+      label,
+    ]));
+    const rootMarriage = labelsByCouple.get('11083:11091');
+    const parentMarriage = labelsByCouple.get('1304:1307');
+    const childMarriage = labelsByCouple.get('11098:16807');
+    assert.strictEqual(rootMarriage.textContent, '29.01.1889');
+    assert.strictEqual(parentMarriage.textContent, '03.11.1857');
+    assert.strictEqual(childMarriage.textContent, '01.07.1918');
+
+    const { nodes } = fixture.snapshotTree();
+    const root = nodes.find(node => node.id === '11083');
+    const rootSpouse = nodes.find(node => node.id === '11091');
+    const child = nodes.find(node => node.id === '11098');
+    const childSpouse = nodes.find(node => node.id === '16807');
+    const rootCx = root.left + NODE_W / 2;
+    const rootSpouseCx = rootSpouse.left + NODE_W / 2;
+    const childCx = child.left + NODE_W / 2;
+    const childSpouseCx = childSpouse.left + NODE_W / 2;
+
+    assert.ok(Math.abs(rootSpouseCx - rootCx) - NODE_W >= 80,
+      'expected the root marriage date to have a dedicated gap');
+    assert.strictEqual(numberFromCss(rootMarriage.style.cssText, 'left'), (rootCx + rootSpouseCx) / 2);
+    assert.strictEqual(numberFromCss(rootMarriage.style.cssText, 'top'), root.top + NODE_H / 2 - 4);
+    assert.ok(numberFromCss(rootMarriage.style.cssText, 'top') -
+      numberFromCss(parentMarriage.style.cssText, 'top') > 40,
+      'expected adjacent-generation marriage dates to use separate vertical lanes');
+
+    assert.ok(Math.abs(childSpouseCx - childCx) - NODE_W >= 80,
+      'expected the descendant marriage date to have a dedicated gap');
+    assert.strictEqual(numberFromCss(childMarriage.style.cssText, 'left'),
+      (childCx + childSpouseCx) / 2);
+    assert.strictEqual(numberFromCss(childMarriage.style.cssText, 'top'),
+      child.top + NODE_H / 2 - 4);
+
+    fixture.marriageDatesToggle.checked = false;
+    fixture.marriageDatesToggle.dispatchEvent({ type: 'change' });
+    assert.deepStrictEqual(marriageLabels(), []);
   });
 
   it('keeps ancestor connectors out of the #2160 grandmother card', async function() {

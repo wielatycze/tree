@@ -85,6 +85,7 @@ describe('UI layout', function() {
     assert.match(html, /<details class="tree-view-options" id="tree-view-options-control">[\s\S]*?id="descendant-limit-control"/);
     assert.match(html, /<summary>Выгляд<\/summary>[\s\S]*?id="generation-guides-toggle" type="checkbox"[\s\S]*?<span>Лініі пакаленняў<\/span>/);
     assert.match(html, /id="relationship-labels-toggle" type="checkbox"[\s\S]*?<span>Сваяцтва<\/span>/);
+    assert.match(html, /id="marriage-dates-toggle" type="checkbox"[\s\S]*?<span>Шлюбы<\/span>/);
     assert.doesNotMatch(html, /class="generation-guides-icon"/);
     assert.match(css, /\.tree-view-options-menu\s*\{/);
     assert.match(css, /\.node-relation\s*\{[\s\S]*?border-top:/);
