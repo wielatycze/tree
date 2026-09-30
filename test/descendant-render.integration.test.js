@@ -13,6 +13,7 @@ const GAP_X = 20;
 const SP_GAP = 32;
 const FAM_GAP = 40;
 const ROW_H = 168;
+const LABEL_W = 148;
 
 class FakeElement {
   constructor(tag, id = null, measuredNodeHeights = {}) {
@@ -250,8 +251,12 @@ async function renderTreeFixture(
     'detail-close',
     'search-input',
     'search-results',
+    'tree-mode-control',
+    'ancestors-only-toggle',
     'descendant-limit-control',
     'descendant-limit-options',
+    'generation-guides-control',
+    'generation-guides-toggle',
     'tree-documents',
     'tree-count',
     'person-context-menu',
@@ -264,12 +269,6 @@ async function renderTreeFixture(
     'comparison-pick-clear',
   ].forEach(elementById);
 
-  const modeButtons = [
-    new FakeElement('button', null, measuredNodeHeights),
-    new FakeElement('button', null, measuredNodeHeights),
-  ];
-  modeButtons[0].dataset.mode = 'ancestors';
-  modeButtons[1].dataset.mode = 'descendants';
   const mockLocation = {
     pathname: '/index.html',
     search: comparisonIdentifiers
@@ -306,7 +305,6 @@ async function renderTreeFixture(
       createElement: tag => new FakeElement(tag, null, measuredNodeHeights),
       createElementNS: (namespace, tag) => new FakeElement(tag, null, measuredNodeHeights),
       querySelectorAll: selector => {
-        if (selector === '.mode-btn') return modeButtons;
         if (selector === '.node.is-selected') return [];
         return [];
       },
@@ -381,6 +379,10 @@ async function renderTreeFixture(
     renderCommonAncestorTree: context.renderCommonAncestorTree,
     descendantLimitControl: elementById('descendant-limit-control'),
     descendantLimitOptions: elementById('descendant-limit-options'),
+    treeModeControl: elementById('tree-mode-control'),
+    ancestorsOnlyToggle: elementById('ancestors-only-toggle'),
+    generationGuidesControl: elementById('generation-guides-control'),
+    generationGuidesToggle: elementById('generation-guides-toggle'),
     crumb: elementById('crumb'),
     location: mockLocation,
   };
@@ -408,6 +410,8 @@ describe('Descendant mode real render', function() {
     assert.deepStrictEqual(comparisonIds, ['1', '1551', '463', '464']);
     assert.deepStrictEqual(commonIds, ['1551', '463']);
     assert.strictEqual(fixture.treeCount.textContent, 'Асоб: 4');
+    assert.strictEqual(fixture.treeModeControl.style.display, 'none');
+    assert.strictEqual(fixture.generationGuidesControl.style.display, 'none');
     assert.strictEqual(
       fixture.comparisonSummary.children[1].children.filter(child =>
         child.className === 'common-ancestor-summary'
@@ -969,6 +973,23 @@ describe('Descendant mode real render', function() {
     );
   });
 
+  it('switches both tree modes with the ancestors-only checkbox', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants');
+
+    assert.strictEqual(fixture.treeModeControl.style.display, 'flex');
+    assert.strictEqual(fixture.ancestorsOnlyToggle.checked, false);
+
+    fixture.ancestorsOnlyToggle.checked = true;
+    fixture.ancestorsOnlyToggle.dispatchEvent({ type: 'change' });
+    assert.strictEqual(fixture.ancestorsOnlyToggle.checked, true);
+    assert.strictEqual(fixture.replacedUrls.at(-1), '/index.html?mode=ancestors#~11083');
+
+    fixture.ancestorsOnlyToggle.checked = false;
+    fixture.ancestorsOnlyToggle.dispatchEvent({ type: 'change' });
+    assert.strictEqual(fixture.ancestorsOnlyToggle.checked, false);
+    assert.strictEqual(fixture.replacedUrls.at(-1), '/index.html#~11083');
+  });
+
   it('does not vertically center a tall descendants tree with no ancestors', async function() {
     const descendants = await renderTreeFixture(43, 'descendants');
     const ancestors = await renderTreeFixture(43, 'ancestors');
@@ -1059,6 +1080,40 @@ describe('Descendant mode real render', function() {
 
     assert.ok(root, 'expected the root node to be rendered');
     assert.ok(maxTop <= root.top, 'expected ancestors mode not to render descendants below the root');
+  });
+
+  it('toggles directional generation bands in normal tree views', async function() {
+    const fixture = await renderTreeFixture(11083, 'descendants', 2);
+
+    assert.strictEqual(fixture.generationGuidesControl.style.display, 'block');
+    assert.strictEqual(fixture.generationGuidesToggle.checked, false);
+    fixture.generationGuidesToggle.checked = true;
+    fixture.generationGuidesToggle.dispatchEvent({ type: 'change' });
+
+    let guides = fixture.canvas.children.find(child =>
+      child.className === 'tree-generation-guides'
+    );
+    let labels = guides.children.map(band => band.children[0].textContent);
+    assert.ok(labels.includes('Продкі · Пакаленне 1'));
+    assert.ok(labels.includes('Асноўная асоба'));
+    assert.ok(labels.includes('Нашчадкі · Пакаленне 1'));
+    assert.ok(labels.includes('Нашчадкі · Пакаленне 2'));
+    const leftmostCard = Math.min(...fixture.canvas.children
+      .filter(child => child.className && child.className.includes('node'))
+      .map(node => numberFromCss(node.style.cssText, 'left')));
+    assert.ok(leftmostCard >= LABEL_W, 'expected generation labels to have a reserved gutter');
+
+    fixture.setMode('ancestors');
+    guides = fixture.canvas.children.find(child => child.className === 'tree-generation-guides');
+    labels = guides.children.map(band => band.children[0].textContent);
+    assert.ok(labels.some(label => label.startsWith('Продкі · Пакаленне')));
+    assert.ok(!labels.some(label => label.startsWith('Нашчадкі · Пакаленне')));
+
+    fixture.generationGuidesToggle.checked = false;
+    fixture.generationGuidesToggle.dispatchEvent({ type: 'change' });
+    assert.ok(!fixture.canvas.children.some(child =>
+      child.className === 'tree-generation-guides'
+    ));
   });
 
   it('keeps ancestor connectors out of the #2160 grandmother card', async function() {

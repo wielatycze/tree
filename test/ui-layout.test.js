@@ -76,6 +76,32 @@ describe('UI layout', function() {
     assert.match(comparisonSummary, /width:\s*280px/);
   });
 
+  it('offers an optional generation guide toggle for normal trees', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+
+    assert.match(html, /id="generation-guides-control"/);
+    assert.match(html, /id="descendant-limit-control"[\s\S]*?<span>Пакаленні<\/span>/);
+    assert.match(html, /<details class="tree-view-options" id="generation-guides-control">[\s\S]*?id="descendant-limit-control"/);
+    assert.match(html, /<summary>Выгляд<\/summary>[\s\S]*?id="generation-guides-toggle" type="checkbox"[\s\S]*?<span>Лініі пакаленняў<\/span>/);
+    assert.doesNotMatch(html, /class="generation-guides-icon"/);
+    assert.match(css, /\.tree-view-options-menu\s*\{/);
+    assert.match(css, /\.generation-limit\s*\{[\s\S]*?border:\s*1px solid #d0cdc8;[\s\S]*?border-radius:\s*7px;[\s\S]*?overflow:\s*hidden;/);
+    assert.match(css, /\.generation-limit-btn\s*\{[\s\S]*?border-right:\s*1px solid #d0cdc8;/);
+    assert.match(css, /\.tree-generation-band\s*\{/);
+    assert.match(css, /\.tree-generation-label\s*\{/);
+  });
+
+  it('uses one ancestors-only option instead of two mode buttons', function() {
+    const html = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+
+    assert.match(html, /id="ancestors-only-toggle" type="checkbox"/);
+    assert.match(html, /<span>Толькі продкі<\/span>/);
+    assert.doesNotMatch(html, /class="mode-btn/);
+    assert.match(css, /\.ancestors-only-option\s*\{/);
+  });
+
   it('links to a separate, incrementally rendered people directory', function() {
     const treeHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
     const peopleHtml = fs.readFileSync(path.join(process.cwd(), 'people.html'), 'utf8');

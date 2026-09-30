@@ -23,7 +23,7 @@ const ROW_H    = NODE_H + GAP_Y;
 const SP_GAP   = 32;   // gap between root node edge and spouse node edge
 const FAM_GAP  = 40;   // gap between children groups of different spouses
 const STAGGER  = 22;   // vertical stagger between family drop bars (px)
-const LABEL_W  = 90;   // left margin reserved for generation labels
+const LABEL_W  = 148;  // left gutter for optional generation labels
 
 // Derived row Y positions (relative to canvas top)
 const Y_GGP  = 24;                    // great-grandparents
@@ -54,6 +54,7 @@ let currentComparison = null;
 let contextComparisonPerson = null;
 let comparisonSummaryCollapsed = false;
 let comparisonReturnRootId = null;
+let showGenerationGuides = false;
 
 const TREE_MODES = new Set(['ancestors', 'descendants']);
 const SEARCH_COLLATOR = new Intl.Collator(['be', 'ru'], { sensitivity: 'base' });
@@ -63,12 +64,9 @@ function modeFromUrl() {
   return TREE_MODES.has(mode) ? mode : 'descendants';
 }
 
-function syncModeButtons() {
-  document.querySelectorAll('.mode-btn').forEach(button => {
-    const active = button.dataset.mode === currentMode;
-    button.classList.toggle('mode-btn-active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
+function syncModeControl() {
+  const toggle = document.getElementById('ancestors-only-toggle');
+  if (toggle) toggle.checked = currentMode === 'ancestors';
 }
 
 function syncTreeUrl(personId) {
@@ -684,6 +682,8 @@ function renderTree(tree) {
   const comparisonSummary = document.getElementById('comparison-summary');
   comparisonSummary.innerHTML = '';
   comparisonSummary.style.display = 'none';
+  document.getElementById('tree-mode-control').style.display = 'flex';
+  document.getElementById('generation-guides-control').style.display = 'block';
 
   const { ancestorTree, families } = tree;
   const visualFamilies = currentMode === 'descendants'
@@ -701,6 +701,7 @@ function renderTree(tree) {
 
   // ── Spouse layout offsets ─────────────────────────────────
   const MARGIN  = 20;
+  const generationGutter = showGenerationGuides ? LABEL_W : 0;
   const {
     orderedFams,
     leftSpouseOffsets,
@@ -724,14 +725,14 @@ function renderTree(tree) {
   const ancestorBounds = ancestorExtents(ancestorTree);
 
   const rootCxRaw = Math.max(
-    MARGIN + leftSpouseNeeded,
-    MARGIN + belowLeftNeeded,
-    MARGIN + ancestorBounds.left,
+    MARGIN + generationGutter + leftSpouseNeeded,
+    MARGIN + generationGutter + belowLeftNeeded,
+    MARGIN + generationGutter + ancestorBounds.left,
   );
 
   const ancestorPositions = assignAncestorPositions(ancestorTree, rootCxRaw, 0);
   const minAncCx = ancestorPositions.reduce((m, p) => Math.min(m, p.cx), rootCxRaw);
-  const shift    = Math.max(0, MARGIN + NODE_W/2 - minAncCx);
+  const shift    = Math.max(0, MARGIN + generationGutter + NODE_W/2 - minAncCx);
   const rootCx   = rootCxRaw + shift;
 
   // Always use ancestor graph layout for consistent rendering in both modes
@@ -759,6 +760,40 @@ function renderTree(tree) {
     + 40;
 
   canvas.style.cssText = `width:${canvasW}px;height:${canvasH}px;position:relative`;
+  if (showGenerationGuides) {
+    const guides = document.createElement('div');
+    guides.className = 'tree-generation-guides';
+    const addGuide = (rowY, label, kind, generation) => {
+      const band = document.createElement('div');
+      band.className = [
+        'tree-generation-band',
+        `is-${kind}`,
+        generation % 2 === 0 ? 'is-even' : '',
+      ].filter(Boolean).join(' ');
+      band.style.cssText = `top:${rowY + NODE_H / 2 - ROW_H / 2}px;height:${ROW_H}px`;
+      band.appendChild(createTextElement('div', 'tree-generation-label', label));
+      guides.appendChild(band);
+    };
+
+    for (let generation = actualDepth; generation >= 1; generation -= 1) {
+      addGuide(
+        Y_ROOT - generation * ROW_H,
+        `Продкі · Пакаленне ${generation}`,
+        'ancestor',
+        generation
+      );
+    }
+    addGuide(Y_ROOT, 'Асноўная асоба', 'root', 0);
+    for (let generation = 1; generation <= descendantDepth; generation += 1) {
+      addGuide(
+        Y_ROOT + generation * ROW_H,
+        `Нашчадкі · Пакаленне ${generation}`,
+        'descendant',
+        generation
+      );
+    }
+    canvas.appendChild(guides);
+  }
   const svg = svgEl('svg', { class: 'connectors', style: `width:${canvasW}px;height:${canvasH}px` });
   canvas.appendChild(svg);
 
@@ -1376,6 +1411,8 @@ function renderCommonAncestorTree(firstId, secondId) {
   canvas.innerHTML = '';
   comparisonSummary.innerHTML = '';
   comparisonSummary.style.display = 'none';
+  document.getElementById('tree-mode-control').style.display = 'none';
+  document.getElementById('generation-guides-control').style.display = 'none';
   if (!currentComparison) comparisonReturnRootId = currentRootId || firstPerson.id;
   currentComparison = [firstPerson.id, secondPerson.id];
   currentRootId = firstPerson.id;
@@ -1383,11 +1420,6 @@ function renderCommonAncestorTree(firstId, secondId) {
   hidePersonContextMenu();
   document.getElementById('detail-panel').style.display = 'none';
   document.getElementById('descendant-limit-control').style.display = 'none';
-  document.querySelectorAll('.mode-btn').forEach(button => {
-    button.classList.remove('mode-btn-active');
-    button.setAttribute('aria-pressed', 'false');
-  });
-
   const firstName = formatName(firstPerson.given, firstPerson.patronymic,
                                firstPerson.surname, firstPerson.maiden) || `Асоба #${firstPerson.id}`;
   const secondName = formatName(secondPerson.given, secondPerson.patronymic,
@@ -1590,17 +1622,24 @@ function setMode(mode) {
   currentComparison = null;
   comparisonReturnRootId = null;
   currentMode = mode;
-  syncModeButtons();
+  syncModeControl();
   if (currentRootId) updateDescendantLimitControl(currentRootId);
   if (currentRootId) renderTree(buildTree(currentRootId));
 }
 
 function initUI() {
-  // Mode buttons
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  const ancestorsOnlyToggle = document.getElementById('ancestors-only-toggle');
+  ancestorsOnlyToggle.addEventListener('change', () => {
+    setMode(ancestorsOnlyToggle.checked ? 'ancestors' : 'descendants');
   });
-  syncModeButtons();
+  syncModeControl();
+
+  const generationGuidesToggle = document.getElementById('generation-guides-toggle');
+  generationGuidesToggle.checked = showGenerationGuides;
+  generationGuidesToggle.addEventListener('change', () => {
+    showGenerationGuides = generationGuidesToggle.checked;
+    if (!currentComparison && currentRootId) renderTree(buildTree(currentRootId));
+  });
 
   document.getElementById('detail-close').addEventListener('click', () => {
     document.getElementById('detail-panel').style.display = 'none';

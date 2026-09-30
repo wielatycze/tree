@@ -29,14 +29,23 @@
       <input id="search-input" placeholder="Пошук" aria-label="Пошук" autocomplete="off">
       <div id="search-results" style="display:none"></div>
     </div>
-    <div class="mode-toggle" role="group" aria-label="Рэжым дрэва">
-      <button class="mode-btn" data-mode="ancestors" aria-pressed="false">Продкі</button>
-      <button class="mode-btn mode-btn-active" data-mode="descendants" aria-pressed="true">Продкі і нашчадкі</button>
-    </div>
+    <label class="ancestors-only-option" id="tree-mode-control">
+      <input id="ancestors-only-toggle" type="checkbox">
+      <span>Толькі продкі</span>
+    </label>
     <div id="comparison-pick-status" style="display:none" aria-live="polite">
       <span id="comparison-pick-name"></span>
       <button id="comparison-pick-clear" type="button" aria-label="Скасаваць выбар" title="Скасаваць выбар">×</button>
     </div>
+    <details class="tree-view-options" id="generation-guides-control">
+      <summary>Выгляд</summary>
+      <div class="tree-view-options-menu">
+        <label class="generation-guides-toggle">
+          <input id="generation-guides-toggle" type="checkbox">
+          <span>Лініі пакаленняў</span>
+        </label>
+      </div>
+    </details>
     <div class="generation-limit" id="descendant-limit-control" style="display:none" role="group" aria-label="Ліміт пакаленняў нашчадкаў">
       <span>Пакаленні</span>
       <div class="generation-limit-options" id="descendant-limit-options"></div>

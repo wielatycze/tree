@@ -211,63 +211,145 @@ body {
   transform: translate(-50%, 0);
 }
 
-/* ── Mode toggle ──────────────────────────────────────────── */
-.mode-toggle {
+/* ── Tree controls ────────────────────────────────────────── */
+.ancestors-only-option {
   display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 9px;
   border: 1px solid #d0cdc8;
   border-radius: 7px;
-  overflow: hidden;
-}
-
-.mode-btn {
-  padding: 5px 12px;
-  font-size: 12px;
-  cursor: pointer;
   background: #fff;
   color: #666;
-  border: none;
-  border-right: 1px solid #d0cdc8;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.mode-btn:last-child { border-right: none; }
-.mode-btn:hover { background: #f5f4f0; color: #333; }
-.mode-btn-active { background: #f0f5ff; color: #4a7fc1; font-weight: 600; }
+
+.ancestors-only-option:hover { background: #f5f4f0; color: #333; }
+
+.ancestors-only-option:has(input:checked) {
+  border-color: #9db7cf;
+  background: #f0f5ff;
+  color: #315f8c;
+}
+
+.ancestors-only-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #5b8fcc;
+}
+
+.tree-view-options {
+  position: relative;
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.tree-view-options > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #d0cdc8;
+  border-radius: 7px;
+  background: #fff;
+  color: #666;
+  list-style: none;
+  cursor: pointer;
+}
+
+.tree-view-options > summary::-webkit-details-marker { display: none; }
+.tree-view-options > summary:hover { background: #f5f4f0; color: #333; }
+
+.tree-view-options[open] > summary {
+  border-color: #9db7cf;
+  background: #f0f5ff;
+  color: #315f8c;
+}
+
+.tree-view-options-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 350;
+  min-width: 156px;
+  padding: 9px 10px;
+  border: 1px solid #d0cdc8;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.14);
+}
+
+.generation-guides-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #444;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.generation-guides-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #5b8fcc;
+}
 
 .generation-limit {
   display: flex;
   align-items: center;
-  gap: 8px;
+  height: 30px;
+  border: 1px solid #d0cdc8;
+  border-radius: 7px;
+  background: #fff;
+  overflow: hidden;
   font-size: 12px;
   color: #666;
+}
+
+.generation-limit > span {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 9px;
+  border-right: 1px solid #d0cdc8;
+  background: #fafaf8;
+  white-space: nowrap;
 }
 
 .generation-limit-options {
   display: flex;
   align-items: center;
-  gap: 4px;
+  align-self: stretch;
 }
 
 .generation-limit-btn {
   min-width: 30px;
-  height: 30px;
+  height: 100%;
   padding: 0 8px;
-  border: 1px solid #b8c2ca;
-  border-radius: 999px;
+  border: 0;
+  border-right: 1px solid #d0cdc8;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
-  background: #f7fbff;
+  background: #fff;
   color: #333;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7);
 }
 
+.generation-limit-btn:last-child { border-right: 0; }
+
 .generation-limit-btn:hover {
-  background: #eef7ff;
-  border-color: #8fb7d9;
+  background: #f0f5fa;
 }
 
 .generation-limit-btn-active {
-  background: #cfe8fb;
-  border-color: #5b8fcc;
+  background: #dcebf8;
   color: #1f4f7d;
   font-weight: 600;
 }
@@ -339,6 +421,39 @@ body {
 #canvas {
   position: relative;
   user-select: none;
+}
+
+.tree-generation-guides {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tree-generation-band {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background: #f7f8f8;
+  border-bottom: 1px solid #dcd9d4;
+}
+
+.tree-generation-band.is-even { background: #f1f4f6; }
+.tree-generation-band.is-root { background: #f7f3fc; }
+.tree-generation-band.is-descendant { background: #f5f6f2; }
+.tree-generation-band.is-descendant.is-even { background: #eef2ef; }
+
+.tree-generation-label {
+  position: absolute;
+  top: 14px;
+  left: 8px;
+  width: 132px;
+  color: #625d57;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 svg.connectors {
