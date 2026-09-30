@@ -88,4 +88,8 @@ Layout modules and list transformations are kept independent of the DOM and test
 
 GitHub Pages can publish the repository root directly. `.github/workflows/test.yml` runs the full suite on pushes and pull requests. `.github/workflows/export.yml` regenerates and commits JSON when the SQLite database or exporter changes.
 
+For the planned private-source/public-artifact split, follow
+[`TWO_REPO_SETUP.md`](TWO_REPO_SETUP.md). It includes owner instructions, a
+copyable future-agent prompt, deployment boundaries, and a workflow template.
+
 The default person is configured as `CONFIG.homeId` near the top of `tree.js`.
