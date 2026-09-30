@@ -210,7 +210,12 @@
       return anchorOffset - block.blockWidth / 2;
     }
 
-    function positionFamilyBlocks(familyBlocks, anchorOffsets, centeredStart = null) {
+    function positionFamilyBlocks(
+      familyBlocks,
+      anchorOffsets,
+      centeredStart = null,
+      balanceFamilyAnchors = false
+    ) {
       if (!familyBlocks.length) return [];
 
       if (centeredStart != null) {
@@ -251,7 +256,13 @@
       const occupiedContours = packedContours.filter(Boolean);
       const minX = Math.min(...occupiedContours.map(contour => contour.left));
       const maxX = Math.max(...occupiedContours.map(contour => contour.right));
-      const centerShift = -(minX + maxX) / 2;
+      const centerShift = balanceFamilyAnchors
+        ? familyBlocks.reduce((sum, block, index) =>
+          sum + desiredBlockLeftForAnchor(
+            block,
+            familyBlockAnchorOffset(block, anchorOffsets)
+          ) - blockLefts[index], 0) / familyBlocks.length
+        : -(minX + maxX) / 2;
       return blockLefts.map(left => left + centerShift);
     }
 
@@ -287,7 +298,8 @@
       const blockLefts = positionFamilyBlocks(
         familyBlocks,
         anchorOffsets,
-        familyBlocks.length === 1 ? childrenStart : null
+        familyBlocks.length === 1 ? childrenStart : null,
+        remainingGenerations === 1
       );
       const contours = [{ left: -nodeWidth / 2, right: nodeWidth / 2 }];
 
@@ -451,7 +463,8 @@
       const relativeBlockLefts = positionFamilyBlocks(
         famBlocks,
         familySplit.anchorOffsets,
-        famBlocks.length === 1 ? childStart - parentCx : null
+        famBlocks.length === 1 ? childStart - parentCx : null,
+        remainingGenerations === 1
       );
       const positionedBlocks = [];
 

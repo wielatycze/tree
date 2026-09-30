@@ -195,6 +195,31 @@ describe('DescendantLayout', function() {
     assert.strictEqual(positions[1] - (positions[0] + NODE_W), FAM_GAP);
   });
 
+  it('balances a shallow packed row against its separate family anchors', function() {
+    const layout = makeLayout();
+    const blocks = [
+      {
+        blockWidth: NODE_W,
+        fi: 0,
+        hasSpouse: false,
+        childContours: [{ left: 0, right: NODE_W }],
+      },
+      {
+        blockWidth: NODE_W,
+        fi: 1,
+        hasSpouse: true,
+        childContours: [{ left: 0, right: NODE_W }],
+      },
+    ];
+
+    const positions = layout.positionFamilyBlocks(blocks, [0, 92], null, true);
+    const childCenters = positions.map(left => left + NODE_W / 2);
+
+    assert.deepStrictEqual(childCenters, [-50, 142]);
+    assert.strictEqual(childCenters[0] - 0, -(childCenters[1] - 92));
+    assert.strictEqual(positions[1] - (positions[0] + NODE_W), FAM_GAP);
+  });
+
   it('assigns different connector lanes to separate family blocks', function() {
     const layout = makeLayout();
     const blocks = [

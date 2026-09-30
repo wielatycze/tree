@@ -1458,6 +1458,26 @@ describe('Descendant mode real render', function() {
     }
   });
 
+  it('balances #524 one-generation children against their actual family anchors', async function() {
+    const { nodes } = await renderTreeFixture(6386, 'descendants', 1);
+    const root = nodes.find(node => node.id === '6386');
+    const spouse = nodes.find(node => node.id === '18570');
+    const rootOnlyChild = nodes.find(node => node.id === '1303');
+    const coupleChild = nodes.find(node => node.id === '5663');
+    const center = node => node.left + NODE_W / 2;
+    const rootAnchor = center(root);
+    const coupleAnchor = (center(root) + center(spouse)) / 2;
+
+    assert.strictEqual(
+      center(rootOnlyChild) - rootAnchor,
+      -(center(coupleChild) - coupleAnchor)
+    );
+    assert.strictEqual(
+      center(coupleChild) - center(rootOnlyChild),
+      NODE_W + FAM_GAP
+    );
+  });
+
   it('renders every known ancestor in ancestors mode without a generation cap', async function() {
     const rootId = 18157;
     const parentsByChild = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data/parents.json'), 'utf8'));
