@@ -6,7 +6,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "translations:extract": "node scripts/translations.mjs extract",
+    "translations:validate": "node scripts/translations.mjs validate",
+    "translations:report": "node scripts/translations.mjs report",
+    "translations:stale": "node scripts/translations.mjs stale"
   },
   "devDependencies": {
     "mocha": "^12.0.2"

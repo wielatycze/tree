@@ -42,9 +42,15 @@
     return surname || maiden || '';
   }
 
-  function createRows(searchIndex, births, deaths, places, numbers, marriages = {}) {
+  function createRows(searchIndex, births, deaths, places, numbers, marriages = {}, options = {}) {
     return searchIndex.map(record => {
-      const [id, , given, patronymic, surname, maiden] = record;
+      const displayRecord = options.localizer
+        ? options.localizer.localizeRecord(record, options.language)
+        : record;
+      const searchRecords = options.localizer
+        ? options.localizer.recordVariants(record)
+        : [record];
+      const [id, , given, patronymic, surname, maiden] = displayRecord;
       const birthDate = births[id] || null;
       const deathDate = deaths[id] || null;
       const marriageDates = (marriages[id] || [])
@@ -53,6 +59,13 @@
         .sort((first, second) => dateSortValue(first) - dateSortValue(second));
       const number = numbers[id];
       const displayId = number != null ? `#${number}` : `~${id}`;
+      const sourcePlace = places[id] || '';
+      const displayPlace = options.localizer
+        ? options.localizer.localizePlace(sourcePlace, options.language)
+        : sourcePlace;
+      const placeVariants = options.localizer
+        ? options.localizer.placeVariants(sourcePlace)
+        : [sourcePlace];
       const row = {
         id,
         surname: surnameLabel(surname, maiden),
@@ -61,7 +74,7 @@
         birth: formatDate(birthDate),
         marriage: marriageDates.map(formatDate).join('; '),
         death: formatDate(deathDate),
-        place: places[id] || '',
+        place: displayPlace,
         displayId,
         urlId: number != null ? String(number) : `~${id}`,
         birthSort: dateSortValue(birthDate),
@@ -70,13 +83,18 @@
         deathSort: dateSortValue(deathDate),
         idSort: number != null ? number : id,
       };
+      const surnameSearchValues = searchRecords.flatMap(value => [
+        value[4],
+        value[5],
+        surnameLabel(value[4], value[5]),
+      ]);
       row.search = {
-        surname: normalize([surname, maiden, row.surname].filter(Boolean).join(' ')),
-        given: normalize(row.given),
-        patronymic: normalize(row.patronymic),
+        surname: normalize(surnameSearchValues.filter(Boolean).join(' ')),
+        given: normalize(searchRecords.map(value => value[2]).filter(Boolean).join(' ')),
+        patronymic: normalize(searchRecords.map(value => value[3]).filter(Boolean).join(' ')),
         birth: normalize(row.birth),
         death: normalize(row.death),
-        place: normalize(row.place),
+        place: normalize(placeVariants.filter(Boolean).join(' ')),
         id: normalize(`${row.displayId} ${id} ${number != null ? number : ''}`),
       };
       return row;

@@ -92,6 +92,22 @@ body {
   overflow-wrap: anywhere;
 }
 
+.data-language-select {
+  height: 30px;
+  min-width: 54px;
+  padding: 0 24px 0 9px;
+  border: 1px solid #d0cdc8;
+  border-radius: 7px;
+  background: #fff;
+  color: #4f4b47;
+  font: 650 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.data-language-select:hover { background-color: #f7f5f2; }
+.data-language-select:focus-visible { outline: 2px solid #77716b; outline-offset: 2px; }
+
 #tree-count {
   padding-right: 8px;
   border-right: 1px solid #d8d5d0;

@@ -1,5 +1,6 @@
 const assert = require('assert');
 const PeopleList = require('../people-list');
+const DataLocalization = require('../data-localization');
 
 describe('People list', function() {
   const searchIndex = [
@@ -107,5 +108,28 @@ describe('People list', function() {
       PeopleList.sortRows(people, 'marriage', 'asc').map(row => row.id),
       [7, 12, 25]
     );
+  });
+
+  it('displays the selected language while filtering in Russian and Belarusian', function() {
+    const localizer = DataLocalization.create({
+      given: { 'Петр': 'Пётр' },
+      familyNames: { 'Павловец': 'Паўлавец' },
+      places: { 'Вяляцічы': 'Вяляцічы' },
+    });
+    const localizedRows = PeopleList.createRows(
+      searchIndex,
+      births,
+      deaths,
+      places,
+      numbers,
+      marriages,
+      { localizer, language: 'be' }
+    );
+    const petr = localizedRows.find(row => row.id === 7);
+
+    assert.strictEqual(petr.surname, 'Паўлавец');
+    assert.strictEqual(petr.given, 'Пётр');
+    assert.deepStrictEqual(PeopleList.filterRows(localizedRows, { surname: 'павловец' }).map(row => row.id), [7]);
+    assert.deepStrictEqual(PeopleList.filterRows(localizedRows, { surname: 'паўлавец' }).map(row => row.id), [7]);
   });
 });

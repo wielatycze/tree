@@ -21,6 +21,20 @@ describe('UI layout', function() {
     assert.doesNotMatch(html, /id="btn-home"|>Галоўная<\/button>/);
   });
 
+  it('offers a compact BE-first data-language dropdown without a visible label', function() {
+    const treeHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+    const peopleHtml = fs.readFileSync(path.join(process.cwd(), 'people.html'), 'utf8');
+    const treeCss = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
+
+    [treeHtml, peopleHtml].forEach(html => {
+      assert.match(html, /<select class="data-language-select" id="data-language-select" aria-label="Мова дадзеных">\s*<option value="be">BE<\/option>\s*<option value="ru">RU<\/option>\s*<\/select>/);
+      assert.doesNotMatch(html, />Даныя</);
+      assert.match(html, /<script src="data-localization\.js"><\/script>/);
+    });
+    assert.match(treeHtml, /id="search-wrap"[\s\S]*?<\/div>\s*<select class="data-language-select"/);
+    assert.match(treeCss, /\.data-language-select\s*\{[^}]*min-width:\s*54px/s);
+  });
+
   it('keeps the person detail panel out of the tree scroll viewport', function() {
     const css = fs.readFileSync(path.join(process.cwd(), 'tree.css'), 'utf8');
     const canvasWrap = cssRule(css, '#canvas-wrap');

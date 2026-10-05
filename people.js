@@ -2,8 +2,12 @@
 
 const PAGE_SIZE = 200;
 const DATA_FILES = ['si', 'births', 'marriages', 'deaths', 'places', 'nums'];
+const TRANSLATION_FILES = ['given', 'patronymics', 'family-names', 'places'];
 
 let allRows = [];
+let sourceData = null;
+let localizer = null;
+let currentDataLanguage = DataLocalization.languageFromSearch(location.search || '');
 let visibleRows = [];
 let renderedCount = 0;
 let sortKey = 'surname';
@@ -17,6 +21,43 @@ const count = document.getElementById('people-count');
 const clearFilters = document.getElementById('clear-filters');
 const filterInputs = Array.from(document.querySelectorAll('[data-filter]'));
 const sortButtons = Array.from(document.querySelectorAll('[data-sort]'));
+const languageSelect = document.getElementById('data-language-select');
+
+function localizedTreeUrl(urlId = '') {
+  const search = DataLocalization.searchWithLanguage('', currentDataLanguage);
+  return `index.html${search}${urlId ? `#${urlId}` : ''}`;
+}
+
+function syncDataLanguageUi() {
+  languageSelect.value = currentDataLanguage;
+  document.getElementById('tree-page-link').href = localizedTreeUrl();
+}
+
+function rebuildRows() {
+  if (!sourceData || !localizer) return;
+  const { searchIndex, births, marriages, deaths, places, numbers } = sourceData;
+  allRows = PeopleList.createRows(
+    searchIndex,
+    births,
+    deaths,
+    places,
+    numbers,
+    marriages,
+    { localizer, language: currentDataLanguage }
+  );
+}
+
+function setDataLanguage(language) {
+  const nextLanguage = DataLocalization.normalizeLanguage(language);
+  if (nextLanguage === currentDataLanguage) return;
+  currentDataLanguage = nextLanguage;
+  const path = location.pathname || '';
+  const search = DataLocalization.searchWithLanguage(location.search || '', currentDataLanguage);
+  history.replaceState(null, '', `${path}${search}`);
+  syncDataLanguageUi();
+  rebuildRows();
+  applyView();
+}
 
 function dateRangeInputs(key) {
   return {
@@ -90,7 +131,7 @@ function appendNextPage() {
     const idCell = createCell('', 'id-cell');
     const link = document.createElement('a');
     link.className = 'person-id-link';
-    link.href = `index.html#${person.urlId}`;
+    link.href = localizedTreeUrl(person.urlId);
     link.textContent = person.displayId;
     link.title = 'Паказаць дрэва';
     idCell.appendChild(link);
@@ -148,13 +189,36 @@ function applyView() {
 
 async function loadPeople() {
   try {
-    const responses = await Promise.all(DATA_FILES.map(name => fetch(`data/${name}.json`)));
+    const requests = [
+      ...DATA_FILES.map(name => ({ key: name, url: `data/${name}.json` })),
+      ...TRANSLATION_FILES.map(name => ({
+        key: `translation:${name}`,
+        url: `translations/be/${name}.json`,
+      })),
+    ];
+    const responses = await Promise.all(requests.map(request => fetch(request.url)));
     const failedResponse = responses.find(response => !response.ok);
     if (failedResponse) throw new Error(`HTTP ${failedResponse.status}`);
-    const [searchIndex, births, marriages, deaths, places, numbers] = await Promise.all(
+    const values = await Promise.all(
       responses.map(response => response.json())
     );
-    allRows = PeopleList.createRows(searchIndex, births, deaths, places, numbers, marriages);
+    const results = Object.fromEntries(requests.map((request, index) => [request.key, values[index]]));
+    sourceData = {
+      searchIndex: results.si,
+      births: results.births,
+      marriages: results.marriages,
+      deaths: results.deaths,
+      places: results.places,
+      numbers: results.nums,
+    };
+    localizer = DataLocalization.create({
+      given: results['translation:given'],
+      patronymics: results['translation:patronymics'],
+      familyNames: results['translation:family-names'],
+      places: results['translation:places'],
+    });
+    rebuildRows();
+    syncDataLanguageUi();
     setupDateRanges();
     updateSortIndicators();
     applyView();
@@ -197,5 +261,8 @@ tableWrap.addEventListener('scroll', () => {
   const nearBottom = tableWrap.scrollTop + tableWrap.clientHeight >= tableWrap.scrollHeight - 240;
   if (nearBottom) appendNextPage();
 });
+
+languageSelect.addEventListener('change', () => setDataLanguage(languageSelect.value));
+syncDataLanguageUi();
 
 loadPeople();

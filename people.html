@@ -10,9 +10,13 @@
 </head>
 <body>
   <header id="people-toolbar">
-    <a class="icon-button" href="index.html" aria-label="Да дрэва" title="Да дрэва">←</a>
+    <a class="icon-button" id="tree-page-link" href="index.html" aria-label="Да дрэва" title="Да дрэва">←</a>
     <h1>Спіс асоб</h1>
     <span id="people-count" aria-live="polite"></span>
+    <select class="data-language-select" id="data-language-select" aria-label="Мова дадзеных">
+      <option value="be">BE</option>
+      <option value="ru">RU</option>
+    </select>
     <button class="icon-button" id="clear-filters" type="button" aria-label="Ачысціць фільтры" title="Ачысціць фільтры" disabled>×</button>
   </header>
 
@@ -79,6 +83,7 @@
     <div id="people-loading">Загрузка дадзеных…</div>
   </main>
 
+  <script src="data-localization.js"></script>
   <script src="people-list.js"></script>
   <script src="people.js"></script>
 </body>

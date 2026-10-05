@@ -34,6 +34,23 @@ body {
   font-weight: 650;
 }
 
+.data-language-select {
+  height: 30px;
+  margin-left: auto;
+  min-width: 54px;
+  padding: 0 24px 0 9px;
+  border: 1px solid #d0cdc8;
+  border-radius: 7px;
+  background: #fff;
+  color: #4f4b47;
+  font: 650 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.data-language-select:hover { background-color: #f7f5f2; }
+.data-language-select:focus-visible { outline: 2px solid #77716b; outline-offset: 2px; }
+
 #people-count {
   margin-left: auto;
   color: #6d6862;

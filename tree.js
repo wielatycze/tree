@@ -12,6 +12,8 @@ const CONFIG = {
   homeId:   11083,      // default person on first load — change to suit
   dataDir:  'data/',
   dataFiles: ['si', 'parents', 'children', 'marriages', 'places', 'nums', 'births', 'deaths'],
+  translationDir: 'translations/be/',
+  translationFiles: ['given', 'patronymics', 'family-names', 'places'],
 };
 
 // ── Layout constants ─────────────────────────────────────────
@@ -48,9 +50,11 @@ let PERSON_CACHE;
 let DB_ID_BY_NUM;
 let KNOWN_PERSON_IDS;
 let SEARCH_ENTRIES;
+let LOCALIZER;
 
 let currentRootId = null;
 let currentMode = 'descendants';
+let currentDataLanguage = 'be';
 let descendantGenerationLimit = null;
 let currentComparison = null;
 let contextComparisonPerson = null;
@@ -71,6 +75,26 @@ function modeFromUrl() {
 function syncModeControl() {
   const toggle = document.getElementById('ancestors-only-toggle');
   if (toggle) toggle.checked = currentMode === 'ancestors';
+}
+
+function syncDataLanguageControl() {
+  const select = document.getElementById('data-language-select');
+  if (select) select.value = currentDataLanguage;
+}
+
+function syncDataLanguageLinks() {
+  const directoryLink = document.getElementById('people-directory-link');
+  if (directoryLink) {
+    directoryLink.href = `people.html${DataLocalization.searchWithLanguage('', currentDataLanguage)}`;
+  }
+}
+
+function syncDataLanguageUrl() {
+  const path = location.pathname || '';
+  const search = DataLocalization.searchWithLanguage(location.search || '', currentDataLanguage);
+  const nextUrl = `${path}${search}${location.hash || ''}`;
+  const currentUrl = `${path}${location.search || ''}${location.hash || ''}`;
+  if (nextUrl !== currentUrl) history.replaceState(null, '', nextUrl);
 }
 
 function syncTreeUrl(personId) {
@@ -115,6 +139,7 @@ function comparisonFromUrl() {
 
 // ── Bootstrap ────────────────────────────────────────────────
 (async function init() {
+  currentDataLanguage = DataLocalization.languageFromSearch(location.search || '');
   if (!await loadData()) return;
   currentMode = modeFromUrl();
   const comparisonIds = comparisonFromUrl();
@@ -135,17 +160,30 @@ async function loadData() {
 
   try {
     let loadedCount = 0;
-    const entries = await Promise.all(CONFIG.dataFiles.map(async name => {
-      const resp = await fetch(CONFIG.dataDir + name + '.json');
-      if (!resp.ok) throw new Error(`Failed to fetch ${name}.json (HTTP ${resp.status})`);
+    const requests = [
+      ...CONFIG.dataFiles.map(name => ({ key: name, url: CONFIG.dataDir + name + '.json' })),
+      ...CONFIG.translationFiles.map(name => ({
+        key: `translation:${name}`,
+        url: CONFIG.translationDir + name + '.json',
+      })),
+    ];
+    const entries = await Promise.all(requests.map(async request => {
+      const resp = await fetch(request.url);
+      if (!resp.ok) throw new Error(`Failed to fetch ${request.url} (HTTP ${resp.status})`);
       const data = await resp.json();
       loadedCount += 1;
-      fill.style.width = Math.round(loadedCount / CONFIG.dataFiles.length * 100) + '%';
-      return [name, data];
+      fill.style.width = Math.round(loadedCount / requests.length * 100) + '%';
+      return [request.key, data];
     }));
     const results = Object.fromEntries(entries);
     ({ si: SI, parents: PA, children: CH, marriages: MA,
        places: PL, nums: NU, births: BI, deaths: DE } = results);
+    LOCALIZER = DataLocalization.create({
+      given: results['translation:given'],
+      patronymics: results['translation:patronymics'],
+      familyNames: results['translation:family-names'],
+      places: results['translation:places'],
+    });
     buildDataIndexes();
     document.getElementById('loading').style.display = 'none';
     return true;
@@ -257,8 +295,9 @@ function buildPerson(id) {
   const personId = Number(id);
   if (!Number.isInteger(personId) || personId <= 0) return null;
   if (PERSON_CACHE.has(personId)) return PERSON_CACHE.get(personId);
-  const r = PERSON_ROWS.get(personId);
-  if (!r && !BI[personId] && !DE[personId]) return null;
+  const sourceRow = PERSON_ROWS.get(personId);
+  if (!sourceRow && !BI[personId] && !DE[personId]) return null;
+  const r = sourceRow ? LOCALIZER.localizeRecord(sourceRow, currentDataLanguage) : null;
   const person = {
     id: personId,
     sex:        r ? r[1] : 0,
@@ -268,7 +307,7 @@ function buildPerson(id) {
     maiden:     r ? r[5] : null,
     birth:      BI[personId] || null,
     death:      DE[personId] || null,
-    place:      PL[personId] || null,
+    place:      LOCALIZER.localizePlace(PL[personId], currentDataLanguage) || null,
     num:        NU[personId] ?? null,
   };
   PERSON_CACHE.set(personId, person);
@@ -1812,6 +1851,29 @@ function updateDescendantLimitControl(rootId) {
   descendantGenerationLimit = nextValue === 'all' ? null : Number(nextValue);
 }
 
+function setDataLanguage(language) {
+  const nextLanguage = DataLocalization.normalizeLanguage(language);
+  if (nextLanguage === currentDataLanguage) return;
+
+  const comparison = currentComparison ? [...currentComparison] : null;
+  const selectedComparisonId = contextComparisonPerson && contextComparisonPerson.id;
+  currentDataLanguage = nextLanguage;
+  PERSON_CACHE = new Map();
+  SEARCH_ENTRIES = null;
+  contextComparisonPerson = selectedComparisonId ? buildPerson(selectedComparisonId) : null;
+
+  syncDataLanguageUrl();
+  syncDataLanguageControl();
+  syncDataLanguageLinks();
+  updateContextComparisonUi();
+  hidePersonContextMenu();
+  document.getElementById('detail-panel').style.display = 'none';
+  document.getElementById('search-results').style.display = 'none';
+
+  if (comparison) renderCommonAncestorTree(comparison[0], comparison[1]);
+  else if (currentRootId) renderTree(buildTree(currentRootId));
+}
+
 function setMode(mode) {
   if (!TREE_MODES.has(mode)) return;
   currentComparison = null;
@@ -1823,6 +1885,11 @@ function setMode(mode) {
 }
 
 function initUI() {
+  const languageSelect = document.getElementById('data-language-select');
+  languageSelect.addEventListener('change', () => setDataLanguage(languageSelect.value));
+  syncDataLanguageControl();
+  syncDataLanguageLinks();
+
   const ancestorsOnlyToggle = document.getElementById('ancestors-only-toggle');
   ancestorsOnlyToggle.addEventListener('change', () => {
     setMode(ancestorsOnlyToggle.checked ? 'ancestors' : 'descendants');
@@ -1930,23 +1997,33 @@ function isOrderedPrefixMatch(queryWords, orderedFields) {
 }
 
 function createSearchEntry(r) {
-  const [, , given, patronymic, surname, maiden, birthYear] = r;
-  const fields = [given, patronymic, surname, maiden]
+  const displayRow = LOCALIZER.localizeRecord(r, currentDataLanguage);
+  const variants = LOCALIZER.recordVariants(r);
+  const [, , given, patronymic, surname, maiden, birthYear] = displayRow;
+  const fields = variants.flatMap(variant => variant.slice(2, 6))
     .filter(Boolean)
-    .map(normalizeSearchText);
-  const orderedVariants = [
-    [surname, given, patronymic].filter(Boolean).map(normalizeSearchText),
-  ];
-  if (maiden && maiden !== surname) {
-    orderedVariants.push([maiden, given, patronymic].filter(Boolean).map(normalizeSearchText));
-  }
+    .map(normalizeSearchText)
+    .filter((value, index, values) => values.indexOf(value) === index);
+  const orderedVariants = variants.flatMap(variant => {
+    const [, , variantGiven, variantPatronymic, variantSurname, variantMaiden] = variant;
+    const names = [
+      [variantSurname, variantGiven, variantPatronymic],
+    ];
+    if (variantMaiden && variantMaiden !== variantSurname) {
+      names.push([variantMaiden, variantGiven, variantPatronymic]);
+    }
+    return names.map(parts => parts.filter(Boolean).map(normalizeSearchText));
+  });
   const name = normalizeSearchText(formatName(given, patronymic, surname, maiden));
+  const formattedVariants = variants.map(variant =>
+    normalizeSearchText(formatName(variant[2], variant[3], variant[4], variant[5]))
+  );
   return {
-    r,
+    r: displayRow,
     fields,
     orderedVariants,
     name,
-    nameVariants: [name, ...orderedVariants.map(variant => variant.join(' '))],
+    nameVariants: [...new Set([name, ...formattedVariants, ...orderedVariants.map(variant => variant.join(' '))])],
     birthYear: birthYear || Number.MAX_SAFE_INTEGER,
   };
 }

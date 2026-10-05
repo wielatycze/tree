@@ -6,6 +6,7 @@ const vm = require('vm');
 const TreeLayout = require('../tree-layout');
 const DescendantLayout = require('../descendant-layout');
 const CommonAncestorLayout = require('../common-ancestor-layout');
+const DataLocalization = require('../data-localization');
 
 const NODE_W = 152;
 const NODE_H = 88;
@@ -291,6 +292,7 @@ async function renderTreeFixture(
     TreeLayout,
     DescendantLayout,
     CommonAncestorLayout,
+    DataLocalization,
     window: {
       innerWidth: 1400,
       innerHeight: 900,
@@ -397,6 +399,8 @@ async function renderTreeFixture(
     generationGuidesToggle: elementById('generation-guides-toggle'),
     relationshipLabelsToggle: elementById('relationship-labels-toggle'),
     marriageDatesToggle: elementById('marriage-dates-toggle'),
+    setDataLanguage: context.setDataLanguage,
+    peopleDirectoryLink: elementById('people-directory-link'),
     snapshotTree,
     crumb: elementById('crumb'),
     location: mockLocation,
@@ -408,6 +412,19 @@ function renderDescendantFixture(rootId) {
 }
 
 describe('Descendant mode real render', function() {
+  it('uses Belarusian by default and keeps an explicit Russian choice in links and search', async function() {
+    const fixture = await renderTreeFixture(36);
+
+    assert.match(fixture.crumb.textContent, /Іван/);
+    fixture.setDataLanguage('ru');
+
+    assert.match(fixture.crumb.textContent, /Иван/);
+    assert.strictEqual(fixture.location.search, '?lang=ru');
+    assert.strictEqual(fixture.peopleDirectoryLink.href, 'people.html?lang=ru');
+    assert.ok(fixture.findPersonMatches('иван').some(match => match.r[0] === 36));
+    assert.ok(fixture.findPersonMatches('іван').some(match => match.r[0] === 36));
+  });
+
   it('renders only the minimal paths to every nearest common ancestor', async function() {
     const fixture = await renderTreeFixture(1);
 

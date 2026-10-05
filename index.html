@@ -21,7 +21,7 @@
   </div>
 
   <div id="toolbar">
-    <a class="btn helper-page-link" href="people.html" aria-label="Спіс асоб" data-tooltip="Спіс асоб">
+    <a class="btn helper-page-link" id="people-directory-link" href="people.html" aria-label="Спіс асоб" data-tooltip="Спіс асоб">
       <span aria-hidden="true">☷</span>
     </a>
     <h1>Вяляцічы і воласць</h1>
@@ -29,6 +29,10 @@
       <input id="search-input" placeholder="Пошук" aria-label="Пошук" autocomplete="off">
       <div id="search-results" style="display:none"></div>
     </div>
+    <select class="data-language-select" id="data-language-select" aria-label="Мова дадзеных">
+      <option value="be">BE</option>
+      <option value="ru">RU</option>
+    </select>
     <label class="ancestors-only-option" id="tree-mode-control">
       <input id="ancestors-only-toggle" type="checkbox">
       <span>Толькі продкі</span>
@@ -96,6 +100,7 @@
     </button>
   </div>
 
+  <script src="data-localization.js"></script>
   <script src="tree-layout.js"></script>
   <script src="descendant-layout.js"></script>
   <script src="common-ancestor-layout.js"></script>
